@@ -68,6 +68,10 @@ export type Match = {
   icebreakers: string[];
   /** unread? */
   unread: number;
+  /** Real-user matches: mock deck may not include this profile */
+  otherName?: string;
+  otherAge?: number;
+  otherPhotoUrl?: string | null;
 };
 
 export type ChatRole = "me" | "them" | "ai";

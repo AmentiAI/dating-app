@@ -1,0 +1,12 @@
+BEGIN;
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS display_name TEXT;
+
+ALTER TABLE public.preferences
+  ADD COLUMN IF NOT EXISTS min_weight_lb INTEGER,
+  ADD COLUMN IF NOT EXISTS max_weight_lb INTEGER,
+  ADD COLUMN IF NOT EXISTS preferred_vibes TEXT[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS verified_only BOOLEAN NOT NULL DEFAULT FALSE;
+
+COMMIT;

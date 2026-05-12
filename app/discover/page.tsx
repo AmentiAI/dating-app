@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AdCard } from "@/components/app/AdCard";
 import { BottomNav } from "@/components/app/BottomNav";
 import { compatibility } from "@/lib/aiMatcher";
@@ -21,6 +22,7 @@ function formatFeetInches(totalInches: number): string {
 }
 
 export default function DiscoverPage() {
+  const router = useRouter();
   const me = useStore((s) => s.me);
   const profiles = useStore((s) => s.profiles);
   const decisions = useStore((s) => s.decisions);
@@ -28,8 +30,53 @@ export default function DiscoverPage() {
   const matches = useStore((s) => s.matches);
   const dailyLikesUsed = useStore((s) => s.dailyLikesUsed);
   const [notice, setNotice] = useState<string | null>(null);
+  const [discoverSource, setDiscoverSource] = useState<"loading" | "db" | "mock">("loading");
+  const [dbProfiles, setDbProfiles] = useState<Profile[]>([]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const authRes = await fetch("/api/auth/me", { cache: "no-store", signal: ac.signal });
+        const authJson = (await authRes.json()) as { user?: { id: string; plan: string } | null };
+        if (!authJson?.user) {
+          if (!ac.signal.aborted) setDiscoverSource("mock");
+          return;
+        }
+        const plan = authJson.user.plan;
+        const validPlan = plan === "plus" || plan === "premium" || plan === "elite" ? plan : "explorer";
+        useStore.getState().updateMe({
+          id: authJson.user.id,
+          plan: validPlan,
+          premium: validPlan !== "explorer"
+        });
+        const res = await fetch("/api/discover", { cache: "no-store", signal: ac.signal });
+        if (res.status === 401) {
+          if (!ac.signal.aborted) router.push("/login?next=/discover");
+          return;
+        }
+        if (!res.ok) {
+          if (!ac.signal.aborted) setDiscoverSource("mock");
+          return;
+        }
+        const data = (await res.json()) as { profiles?: Profile[] };
+        if (ac.signal.aborted) return;
+        const list = data.profiles ?? [];
+        if (list.length > 0) {
+          setDbProfiles(list);
+          setDiscoverSource("db");
+        } else {
+          setDiscoverSource("mock");
+        }
+      } catch {
+        if (!ac.signal.aborted) setDiscoverSource("mock");
+      }
+    })();
+    return () => ac.abort();
+  }, [router]);
 
   const deck = useMemo(() => {
+    if (discoverSource === "db") return dbProfiles;
     return profiles.filter((p) => {
       if (decisions[p.id]) return false;
       const score = compatibility(me, p);
@@ -47,9 +94,65 @@ export default function DiscoverPage() {
       if (racePref.length > 0 && p.race && !racePref.includes(p.race)) return false;
       return true;
     });
-  }, [profiles, decisions, me]);
+  }, [discoverSource, dbProfiles, profiles, decisions, me]);
 
   const current = deck[0];
+
+  const swipeDb = useCallback(
+    async (decision: "like" | "pass" | "superlike") => {
+      if (!current || discoverSource !== "db") return;
+      setNotice(null);
+      const res = await fetch("/api/swipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ swipedUserId: current.id, type: decision })
+      });
+      let json: { error?: string; duplicate?: boolean; matched?: boolean; matchId?: string; compatibility?: number } = {};
+      try {
+        json = (await res.json()) as typeof json;
+      } catch {
+        setNotice("Swipe failed.");
+        return;
+      }
+      if (!res.ok) {
+        setNotice(typeof json.error === "string" ? json.error : "Swipe failed.");
+        return;
+      }
+      useStore.getState().recordDiscoverSwipe(current.id, decision);
+      setDbProfiles((prev) => prev.filter((p) => p.id !== current.id));
+      if (json.duplicate) return;
+      if (json.matched && json.matchId) {
+        useStore.getState().addRealMatch({
+          matchId: json.matchId,
+          profile: current,
+          compatibility: typeof json.compatibility === "number" ? json.compatibility : 85
+        });
+      }
+      if (decision !== "pass" && me.plan === "explorer") {
+        useStore.getState().bumpDailyLikeIfExplorer();
+      }
+    },
+    [current, discoverSource, me.plan]
+  );
+
+  const refetchDiscover = useCallback(async () => {
+    if (discoverSource !== "db") {
+      useStore.getState().resetDeck();
+      return;
+    }
+    setNotice(null);
+    const res = await fetch("/api/discover", { cache: "no-store" });
+    if (res.status === 401) {
+      router.push("/login?next=/discover");
+      return;
+    }
+    if (!res.ok) {
+      setNotice("Could not refresh deck.");
+      return;
+    }
+    const data = (await res.json()) as { profiles?: Profile[] };
+    setDbProfiles(data.profiles ?? []);
+  }, [discoverSource, router]);
 
   return (
     <div className="min-h-screen bg-bg pb-28 pt-4 text-ink aurora sm:pt-6">
@@ -107,17 +210,22 @@ export default function DiscoverPage() {
             <AdCard compact />
           </div>
         )}
-        {notice && <p className="mb-3 rounded-xl border border-gold/50 bg-gold/10 px-3 py-2 text-sm text-ink">{notice}</p>}
-        {!current ? (
+        {discoverSource === "loading" && (
+          <div className="card p-10 text-center text-sm text-sub">Loading people near you…</div>
+        )}
+        {discoverSource !== "loading" && notice && (
+          <p className="mb-3 rounded-xl border border-gold/50 bg-gold/10 px-3 py-2 text-sm text-ink">{notice}</p>
+        )}
+        {discoverSource !== "loading" && !current ? (
           <div className="card p-8 text-center">
             <p className="font-display text-xl font-semibold">You&apos;re caught up</p>
-            <p className="mt-2 text-sm text-sub">Reset the deck or tighten filters in onboarding.</p>
+            <p className="mt-2 text-sm text-sub">
+              {discoverSource === "db"
+                ? "Check back later for new profiles, or shuffle to reload from the server."
+                : "Reset the deck or tighten filters in onboarding."}
+            </p>
             <div className="mt-6 flex flex-col gap-3">
-              <button
-                type="button"
-                className="pill-grad"
-                onClick={() => useStore.getState().resetDeck()}
-              >
+              <button type="button" className="pill-grad" onClick={() => void refetchDiscover()}>
                 Shuffle deck
               </button>
               <Link href="/onboarding" className="btn-ghost text-center text-sm">
@@ -125,7 +233,7 @@ export default function DiscoverPage() {
               </Link>
             </div>
           </div>
-        ) : (
+        ) : discoverSource !== "loading" && current ? (
           <article className="card overflow-hidden">
             <div className="relative aspect-[4/5] w-full bg-surface2">
               {pickPhoto(current) ? (
@@ -185,8 +293,11 @@ export default function DiscoverPage() {
                   type="button"
                   className="btn-ghost flex-1 py-3.5"
                   onClick={() => {
-                    setNotice(null);
-                    decide(current.id, "pass");
+                    if (discoverSource === "db") void swipeDb("pass");
+                    else {
+                      setNotice(null);
+                      decide(current.id, "pass");
+                    }
                   }}
                 >
                   Pass
@@ -195,8 +306,11 @@ export default function DiscoverPage() {
                   type="button"
                   className="flex-[1.2] rounded-full border border-white/10 bg-white/10 px-3 py-3.5 text-base font-semibold text-white hover:bg-white/15"
                   onClick={() => {
-                    const res = decide(current.id, "like");
-                    setNotice(res.blocked ?? null);
+                    if (discoverSource === "db") void swipeDb("like");
+                    else {
+                      const res = decide(current.id, "like");
+                      setNotice(res.blocked ?? null);
+                    }
                   }}
                 >
                   Like
@@ -205,8 +319,11 @@ export default function DiscoverPage() {
                   type="button"
                   className="pill-grad flex-1 px-3 py-3.5 text-base"
                   onClick={() => {
-                    const res = decide(current.id, "superlike");
-                    setNotice(res.blocked ?? null);
+                    if (discoverSource === "db") void swipeDb("superlike");
+                    else {
+                      const res = decide(current.id, "superlike");
+                      setNotice(res.blocked ?? null);
+                    }
                   }}
                 >
                   Super
@@ -214,7 +331,7 @@ export default function DiscoverPage() {
               </div>
             </div>
           </article>
-        )}
+        ) : null}
       </div>
       <BottomNav />
     </div>

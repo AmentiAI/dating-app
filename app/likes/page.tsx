@@ -1,11 +1,18 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BottomNav } from "@/components/app/BottomNav";
 import { MOCK_PROFILES } from "@/lib/mockData";
 import { useStore } from "@/lib/store";
+import type { Profile } from "@/lib/types";
+
+function pickPhoto(p: Profile): string | null {
+  const ph = p.media.find((m) => m.kind === "photo");
+  return ph?.url ?? null;
+}
 
 export default function LikesPage() {
   const me = useStore((s) => s.me);
@@ -14,9 +21,98 @@ export default function LikesPage() {
   const router = useRouter();
   const premiumUnlocked = me.plan !== "explorer";
 
-  const profiles = useMemo(
-    () => likedYou.map((id) => MOCK_PROFILES.find((p) => p.id === id)).filter(Boolean),
+  const [likesSource, setLikesSource] = useState<"loading" | "db" | "mock">(() =>
+    useStore.getState().me.plan !== "explorer" ? "loading" : "mock"
+  );
+  const [dbLikers, setDbLikers] = useState<Profile[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!premiumUnlocked) {
+      setLikesSource("mock");
+      return;
+    }
+    setLikesSource("loading");
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const authRes = await fetch("/api/auth/me", { cache: "no-store", signal: ac.signal });
+        const authJson = (await authRes.json()) as { user?: { id: string } | null };
+        if (!authJson?.user) {
+          if (!ac.signal.aborted) setLikesSource("mock");
+          return;
+        }
+        const res = await fetch("/api/likes-you", { cache: "no-store", signal: ac.signal });
+        if (res.status === 403 || res.status === 401) {
+          if (!ac.signal.aborted) setLikesSource("mock");
+          return;
+        }
+        if (!res.ok) {
+          if (!ac.signal.aborted) setLikesSource("mock");
+          return;
+        }
+        const data = (await res.json()) as { profiles?: Profile[] };
+        if (ac.signal.aborted) return;
+        setDbLikers(data.profiles ?? []);
+        setLikesSource("db");
+      } catch {
+        if (!ac.signal.aborted) setLikesSource("mock");
+      }
+    })();
+    return () => ac.abort();
+  }, [premiumUnlocked]);
+
+  const mockProfiles = useMemo(
+    () => likedYou.map((id) => MOCK_PROFILES.find((p) => p.id === id)).filter(Boolean) as Profile[],
     [likedYou]
+  );
+
+  const profiles = likesSource === "db" ? dbLikers : mockProfiles;
+
+  const likeBackRemote = useCallback(
+    async (p: Profile): Promise<{ matchId?: string; error?: string }> => {
+      setNotice(null);
+      const res = await fetch("/api/swipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ swipedUserId: p.id, type: "like" })
+      });
+      let json: {
+        error?: string;
+        duplicate?: boolean;
+        matched?: boolean;
+        matchId?: string;
+        compatibility?: number;
+      } = {};
+      try {
+        json = (await res.json()) as typeof json;
+      } catch {
+        return { error: "Request failed." };
+      }
+      if (!res.ok) {
+        return { error: typeof json.error === "string" ? json.error : "Could not like back." };
+      }
+
+      if (json.duplicate) {
+        const existing = useStore.getState().matches.find((m) => m.profileId === p.id);
+        setDbLikers((prev) => prev.filter((x) => x.id !== p.id));
+        return existing ? { matchId: existing.id } : {};
+      }
+
+      if (json.matched && json.matchId) {
+        useStore.getState().addRealMatch({
+          matchId: json.matchId,
+          profile: p,
+          compatibility: typeof json.compatibility === "number" ? json.compatibility : 85
+        });
+      }
+      setDbLikers((prev) => prev.filter((x) => x.id !== p.id));
+      if (me.plan === "explorer") {
+        useStore.getState().bumpDailyLikeIfExplorer();
+      }
+      return { matchId: json.matchId };
+    },
+    [me.plan]
   );
 
   return (
@@ -40,39 +136,77 @@ export default function LikesPage() {
         </section>
       ) : (
         <section className="mx-auto mt-6 max-w-xl space-y-3">
-          {profiles.length === 0 ? (
+          {likesSource === "loading" && (
+            <div className="card p-8 text-center text-sm text-sub">Loading people who liked you…</div>
+          )}
+          {likesSource !== "loading" && notice && (
+            <p className="rounded-xl border border-gold/50 bg-gold/10 px-3 py-2 text-sm text-ink">{notice}</p>
+          )}
+          {likesSource !== "loading" && profiles.length === 0 ? (
             <p className="card p-7 text-base text-sub">No new likes yet.</p>
-          ) : (
+          ) : null}
+          {likesSource !== "loading" &&
             profiles.map((p) => (
-              <article key={p!.id} className="card flex items-center justify-between gap-3 p-4 sm:p-5">
-                <div>
-                  <p className="text-lg font-semibold">
-                    {p!.name}, {p!.age}
-                  </p>
-                  <p className="text-sm text-sub">{p!.headline}</p>
+              <article key={p.id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <div className="flex min-w-0 flex-1 gap-3">
+                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface2 sm:h-20 sm:w-20">
+                    {pickPhoto(p) ? (
+                      <Image
+                        src={pickPhoto(p)!}
+                        alt=""
+                        fill
+                        className="object-cover"
+                        sizes="80px"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-muted">No photo</div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-lg font-semibold">
+                      {p.name}, {p.age}
+                    </p>
+                    <p className="line-clamp-2 text-sm text-sub">{p.headline}</p>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
                     className="pill-grad px-4 py-2.5 text-sm"
-                    onClick={() => likeBack(p!.id)}
+                    onClick={async () => {
+                      if (likesSource === "db") {
+                        const r = await likeBackRemote(p);
+                        if (r.error) setNotice(r.error);
+                      } else {
+                        likeBack(p.id);
+                      }
+                    }}
                   >
                     Like back
                   </button>
                   <button
                     type="button"
                     className="btn-ghost px-4 py-2.5 text-sm"
-                    onClick={() => {
-                      const { matchId } = likeBack(p!.id);
-                      if (matchId) router.push(`/chat/${matchId}`);
+                    onClick={async () => {
+                      if (likesSource === "db") {
+                        const r = await likeBackRemote(p);
+                        if (r.error) {
+                          setNotice(r.error);
+                          return;
+                        }
+                        if (r.matchId) router.push(`/chat/${r.matchId}`);
+                      } else {
+                        const { matchId } = likeBack(p.id);
+                        if (matchId) router.push(`/chat/${matchId}`);
+                      }
                     }}
                   >
                     Message
                   </button>
                 </div>
               </article>
-            ))
-          )}
+            ))}
         </section>
       )}
 

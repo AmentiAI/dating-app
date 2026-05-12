@@ -46,6 +46,34 @@ export async function POST(req: Request) {
       await tx.authCredential.create({
         data: { userId: created.id, passwordHash: hashPassword(password) }
       });
+      await tx.profile.create({
+        data: {
+          userId: created.id,
+          displayName: null,
+          bio: null,
+          city: null,
+          relationshipIntent: null
+        }
+      });
+      await tx.preference.create({
+        data: {
+          userId: created.id,
+          minAge: 25,
+          maxAge: 35,
+          minHeight: 64,
+          maxHeight: 74,
+          minWeightLb: 110,
+          maxWeightLb: 220,
+          maxDistance: 25,
+          preferredEthnicities: [],
+          preferredReligions: [],
+          preferredBodyTypes: [],
+          preferredRelationshipTypes: ["long-term", "marriage", "open-to-anything"],
+          preferredVibes: [],
+          verifiedOnly: false,
+          dealbreakers: ["Smoking"]
+        }
+      });
       return created;
     });
 

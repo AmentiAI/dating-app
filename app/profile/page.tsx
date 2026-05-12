@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BottomNav } from "@/components/app/BottomNav";
 import { toProxyPhotoUrl } from "@/lib/media";
+import type { Intent, Vibe } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
 const intentOptions = ["long-term", "marriage", "casual", "friends", "open-to-anything"] as const;
@@ -36,6 +37,27 @@ const dealbreakerOptions = [
   "Religion"
 ];
 
+type ProfileDto = {
+  userId: string;
+  name: string;
+  city: string;
+  bio: string;
+  intent: string;
+  interests: string[];
+  photoUrls: string[];
+  filters: {
+    ageRange: [number, number];
+    maxDistanceKm: number;
+    heightRange: [number, number];
+    weightRange: [number, number];
+    intents: string[];
+    vibes: string[];
+    preferredRaces: string[];
+    verifiedOnly: boolean;
+  };
+  dealbreakers: string[];
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const me = useStore((s) => s.me);
@@ -47,6 +69,9 @@ export default function ProfilePage() {
   const [intent, setIntent] = useState(me.intent);
   const [interests, setInterests] = useState(me.interests.join(", "));
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -69,59 +94,127 @@ export default function ProfilePage() {
     [me.media]
   );
 
-  useEffect(() => {
-    setName(me.name);
-    setCity(me.city);
-    setBio(me.bio);
-    setIntent(me.intent);
-    setInterests(me.interests.join(", "));
-    setPreviewIndex(0);
-    setMaxDistanceKm(me.filters.maxDistanceKm);
-    setAgeMin(me.filters.ageRange[0]);
-    setAgeMax(me.filters.ageRange[1]);
-    setHeightMin(me.filters.heightRange?.[0] ?? 64);
-    setHeightMax(me.filters.heightRange?.[1] ?? 74);
-    setWeightMin(me.filters.weightRange?.[0] ?? 110);
-    setWeightMax(me.filters.weightRange?.[1] ?? 220);
-    setPreferredRaces(me.filters.preferredRaces ?? []);
-    setPreferredIntents(me.filters.intents ?? []);
-    setPreferredVibes(me.filters.vibes ?? []);
-    setVerifiedOnly(me.filters.verifiedOnly);
-    setDealbreakers(me.dealbreakers ?? []);
-    const normalized = me.media.map((m) =>
-      m.kind === "photo" ? { ...m, url: toProxyPhotoUrl(m.url) } : m
-    );
-    if (JSON.stringify(normalized) !== JSON.stringify(me.media)) {
-      updateMe({ media: normalized });
-    }
-  }, [me, updateMe]);
-
-  function save(e: FormEvent) {
-    e.preventDefault();
+  function applyFromServer(data: ProfileDto) {
+    const base = useStore.getState().me;
     updateMe({
-      name: name.trim() || me.name,
-      city: city.trim() || me.city,
-      bio: bio.trim() || me.bio,
-      intent,
-      dealbreakers,
-      interests: interests
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean),
+      id: data.userId,
+      name: data.name,
+      city: data.city,
+      bio: data.bio,
+      intent: data.intent as Intent,
+      interests: data.interests,
+      media: data.photoUrls.map((u) => ({ kind: "photo" as const, url: toProxyPhotoUrl(u) })),
       filters: {
-        ...me.filters,
-        maxDistanceKm,
-        ageRange: [Math.min(ageMin, ageMax), Math.max(ageMin, ageMax)],
-        heightRange: [Math.min(heightMin, heightMax), Math.max(heightMin, heightMax)],
-        weightRange: [Math.min(weightMin, weightMax), Math.max(weightMin, weightMax)],
-        preferredRaces,
-        intents: preferredIntents as typeof me.filters.intents,
-        vibes: preferredVibes as typeof me.filters.vibes,
-        verifiedOnly
-      }
+        ...base.filters,
+        ageRange: data.filters.ageRange,
+        maxDistanceKm: data.filters.maxDistanceKm,
+        heightRange: data.filters.heightRange,
+        weightRange: data.filters.weightRange,
+        intents: data.filters.intents as Intent[],
+        vibes: data.filters.vibes as Vibe[],
+        preferredRaces: data.filters.preferredRaces,
+        verifiedOnly: data.filters.verifiedOnly
+      },
+      dealbreakers: data.dealbreakers,
+      onboarded: true
     });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1400);
+    setName(data.name);
+    setCity(data.city);
+    setBio(data.bio);
+    setIntent(data.intent as Intent);
+    setInterests(data.interests.join(", "));
+    setMaxDistanceKm(data.filters.maxDistanceKm);
+    setAgeMin(data.filters.ageRange[0]);
+    setAgeMax(data.filters.ageRange[1]);
+    setHeightMin(data.filters.heightRange[0]);
+    setHeightMax(data.filters.heightRange[1]);
+    setWeightMin(data.filters.weightRange[0]);
+    setWeightMax(data.filters.weightRange[1]);
+    setPreferredRaces(data.filters.preferredRaces ?? []);
+    setPreferredIntents(data.filters.intents ?? []);
+    setPreferredVibes(data.filters.vibes ?? []);
+    setVerifiedOnly(data.filters.verifiedOnly);
+    setDealbreakers(data.dealbreakers ?? []);
+    setPreviewIndex(0);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/me/profile", { cache: "no-store" });
+        if (res.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        if (!res.ok) {
+          if (!cancelled) setLoadStatus("error");
+          return;
+        }
+        const data = (await res.json()) as ProfileDto;
+        if (cancelled) return;
+        applyFromServer(data);
+        if (!cancelled) setLoadStatus("ready");
+      } catch {
+        if (!cancelled) setLoadStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once on mount
+  }, [router]);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setSaveError(null);
+    setSaving(true);
+    const interestList = interests
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    try {
+      const res = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          city: city.trim(),
+          bio: bio.trim(),
+          intent,
+          interests: interestList,
+          photoUrls,
+          filters: {
+            ageRange: [Math.min(ageMin, ageMax), Math.max(ageMin, ageMax)],
+            maxDistanceKm,
+            heightRange: [Math.min(heightMin, heightMax), Math.max(heightMin, heightMax)],
+            weightRange: [Math.min(weightMin, weightMax), Math.max(weightMin, weightMax)],
+            intents: preferredIntents,
+            vibes: preferredVibes,
+            preferredRaces: preferredRaces,
+            verifiedOnly
+          },
+          dealbreakers
+        })
+      });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!res.ok) {
+        const j = (await res.json()) as { error?: string };
+        setSaveError(j.error ?? "Save failed");
+        return;
+      }
+      const data = (await res.json()) as ProfileDto;
+      applyFromServer(data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1400);
+    } catch {
+      setSaveError("Network error while saving.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function setPhotos(nextUrls: string[]) {
@@ -182,6 +275,33 @@ export default function ProfilePage() {
 
   function toggleChip(current: string[], value: string, setter: (next: string[]) => void) {
     setter(current.includes(value) ? current.filter((x) => x !== value) : [...current, value]);
+  }
+
+  if (loadStatus === "loading") {
+    return (
+      <main className="min-h-screen bg-bg px-4 pb-28 pt-16 text-ink sm:pt-20">
+        <p className="mx-auto max-w-xl text-center text-sub">Loading your profile…</p>
+        <BottomNav />
+      </main>
+    );
+  }
+
+  if (loadStatus === "error") {
+    return (
+      <main className="min-h-screen bg-bg px-4 pb-28 pt-16 text-ink">
+        <div className="card mx-auto max-w-xl p-6 text-center">
+          <p className="font-medium">We couldn&apos;t load your profile.</p>
+          <p className="mt-2 text-sm text-sub">
+            Sign in, check your connection, or run <code className="text-xs">npm run db:migrate</code> if the database
+            is missing new columns.
+          </p>
+          <button type="button" className="pill-grad mt-4" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+        <BottomNav />
+      </main>
+    );
   }
 
   return (
@@ -505,8 +625,12 @@ export default function ProfilePage() {
           />
         </label>
 
-        <button type="submit" className="pill-grad w-full">
-          {saved ? "Saved" : "Save profile"}
+        {saveError && (
+          <p className="rounded-xl border border-red-300/50 bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>
+        )}
+
+        <button type="submit" className="pill-grad w-full disabled:opacity-60" disabled={saving}>
+          {saving ? "Saving…" : saved ? "Saved" : "Save profile"}
         </button>
         <button
           type="button"

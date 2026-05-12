@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MOCK_PROFILES } from "@/lib/mockData";
+import { isDbMatchId } from "@/lib/matchIds";
 import { useStore } from "@/lib/store";
 
 export default function ChatPage() {
@@ -13,6 +14,7 @@ export default function ChatPage() {
   const chats = useStore((s) => s.chats);
   const sendMessage = useStore((s) => s.sendMessage);
   const markMatchRead = useStore((s) => s.markMatchRead);
+  const hydrateChatFromServer = useStore((s) => s.hydrateChatFromServer);
   const typing = useStore((s) => s.typingByMatch[matchId] ?? false);
   const me = useStore((s) => s.me);
 
@@ -21,6 +23,7 @@ export default function ChatPage() {
     () => MOCK_PROFILES.find((p) => p.id === match?.profileId),
     [match?.profileId]
   );
+  const displayName = profile?.name ?? match?.otherName ?? "Chat";
   const thread = chats[matchId] ?? [];
   const [text, setText] = useState("");
   const hasReplyAfterLastMe = useMemo(() => {
@@ -32,6 +35,29 @@ export default function ChatPage() {
   useEffect(() => {
     markMatchRead(matchId);
   }, [markMatchRead, matchId]);
+
+  useEffect(() => {
+    if (!match || !isDbMatchId(matchId)) return;
+    const ac = new AbortController();
+    (async () => {
+      const res = await fetch(`/api/matches/${matchId}/messages`, {
+        cache: "no-store",
+        signal: ac.signal
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { messages?: { id: string; role: string; text?: string; ts: string }[] };
+      if (ac.signal.aborted) return;
+      const raw = data.messages ?? [];
+      const messages = raw.map((m) => ({
+        id: m.id,
+        role: m.role as "me" | "them" | "ai",
+        text: m.text,
+        ts: m.ts
+      }));
+      hydrateChatFromServer(matchId, messages);
+    })();
+    return () => ac.abort();
+  }, [match, matchId, hydrateChatFromServer]);
 
   if (!match) {
     return (
@@ -52,7 +78,7 @@ export default function ChatPage() {
             ←
           </Link>
           <div>
-            <p className="font-semibold">{profile?.name ?? "Chat"}</p>
+            <p className="font-semibold">{displayName}</p>
             <p className="text-xs text-muted">{match.compatibility}% compatibility</p>
           </div>
         </div>
@@ -81,11 +107,11 @@ export default function ChatPage() {
 
       <form
         className="safe-bottom sticky bottom-0 border-t border-line/60 bg-bg/95 px-4 py-3 backdrop-blur-xl sm:px-5 sm:py-4"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
           const t = text.trim();
           if (!t) return;
-          sendMessage(matchId, { role: "me", text: t });
+          await sendMessage(matchId, { role: "me", text: t });
           setText("");
         }}
       >

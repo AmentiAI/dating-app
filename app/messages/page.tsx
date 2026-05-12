@@ -18,7 +18,8 @@ export default function MessagesPage() {
         const profile = MOCK_PROFILES.find((p) => p.id === m.profileId);
         const thread = chats[m.id] ?? [];
         const last = thread[thread.length - 1];
-        return { matchId: m.id, profile, unread: m.unread, last };
+        const title = profile?.name ?? m.otherName ?? "Conversation";
+        return { matchId: m.id, profile, title, unread: m.unread, last };
       }),
     [matches, chats]
   );
@@ -41,7 +42,7 @@ export default function MessagesPage() {
               className="card flex items-center justify-between p-5 transition hover:border-accent2/40"
             >
               <div>
-                <p className="text-lg font-semibold">{row.profile?.name ?? "Conversation"}</p>
+                <p className="text-lg font-semibold">{row.title}</p>
                 <p className="line-clamp-1 text-sm text-sub">{row.last?.text ?? "Say hi to start chatting."}</p>
               </div>
               <span className="text-xs font-semibold text-accent2">

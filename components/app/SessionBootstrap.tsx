@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { normalizeMedia } from "@/lib/media";
 import { useStore } from "@/lib/store";
+import type { Match } from "@/lib/types";
 
 type MeResponse = {
   user: null | {
@@ -53,6 +54,12 @@ export function SessionBootstrap() {
       const fixed = normalizeMedia(curr);
       if (JSON.stringify(curr) !== JSON.stringify(fixed)) {
         updateMe({ media: fixed });
+      }
+
+      const mRes = await fetch("/api/matches", { cache: "no-store" }).catch(() => null);
+      if (mRes?.ok) {
+        const mData = (await mRes.json()) as { matches?: Match[] };
+        useStore.getState().mergeMatchesFromApi(mData.matches ?? []);
       }
     }
     void run();

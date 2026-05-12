@@ -2,6 +2,7 @@
 
 import { BottomNav } from "@/components/app/BottomNav";
 import { useStore } from "@/lib/store";
+import type { Match } from "@/lib/types";
 
 const tiers = [
   {
@@ -68,12 +69,20 @@ export default function PremiumPage() {
   const addBoostCredits = useStore((s) => s.addBoostCredits);
 
   async function choosePlan(plan: (typeof tiers)[number]["id"]) {
-    setPlan(plan);
-    await fetch("/api/billing/plan", {
+    const res = await fetch("/api/billing/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ plan })
     }).catch(() => null);
+    if (!res?.ok) return;
+    setPlan(plan);
+    if (plan !== "explorer") {
+      const mRes = await fetch("/api/matches", { cache: "no-store" }).catch(() => null);
+      if (mRes?.ok) {
+        const mData = (await mRes.json()) as { matches?: Match[] };
+        useStore.getState().mergeMatchesFromApi(mData.matches ?? []);
+      }
+    }
   }
 
   async function buyItem(label: string, price: string, boosts: number) {

@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ChatMessage, Filters, Match, Me, Moment, Profile } from "./types";
+import { isDbMatchId } from "./matchIds";
 import { MOCK_MOMENTS, MOCK_PROFILES } from "./mockData";
 import { compatibility, suggestIcebreakers } from "./aiMatcher";
 
@@ -25,7 +26,7 @@ type State = {
   // actions
   decide: (profileId: string, decision: Decision) => { matched: boolean; profile?: Profile; blocked?: string };
   rewind: () => void;
-  sendMessage: (matchId: string, msg: Omit<ChatMessage, "id" | "ts">) => void;
+  sendMessage: (matchId: string, msg: Omit<ChatMessage, "id" | "ts">) => void | Promise<void>;
   reactToMessage: (matchId: string, msgId: string, reaction: string) => void;
   toggleMomentLike: (momentId: string) => void;
   updateMe: (patch: Partial<Me>) => void;
@@ -36,6 +37,16 @@ type State = {
   startBoost: (mins: number) => void;
   markMatchRead: (matchId: string) => void;
   likeBack: (profileId: string) => { matchId?: string };
+  /** DB discover: record swipe locally (no mock match logic). */
+  recordDiscoverSwipe: (profileId: string, decision: Decision) => void;
+  /** Server-confirmed mutual match (real UUID match id). */
+  addRealMatch: (args: { matchId: string; profile: Profile; compatibility: number }) => void;
+  /** After a successful API like/superlike while on Explorer — keeps UI counter in sync with server. */
+  bumpDailyLikeIfExplorer: () => void;
+  /** Merge / upsert matches from GET /api/matches; keeps local unread and icebreakers when present. */
+  mergeMatchesFromApi: (incoming: Match[]) => void;
+  /** Replace thread with server messages when non-empty; keeps local (e.g. AI tips) when server has none. */
+  hydrateChatFromServer: (matchId: string, serverMsgs: ChatMessage[]) => void;
 };
 
 const defaultMe: Me = {
@@ -160,9 +171,28 @@ export const useStore = create<State>()(
         set({ decisions: next });
       },
 
-      sendMessage: (matchId, partial) => {
+      sendMessage: async (matchId, partial) => {
         const { chats, matches, typingByMatch } = get();
         const list = chats[matchId] ?? [];
+
+        if (isDbMatchId(matchId) && partial.role === "me") {
+          const text = (partial.text ?? "").trim();
+          if (!text) return;
+          const res = await fetch(`/api/matches/${matchId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { message?: ChatMessage };
+          if (!data.message) return;
+          const curr = get().chats[matchId] ?? [];
+          set({
+            chats: { ...get().chats, [matchId]: [...curr, data.message] }
+          });
+          return;
+        }
+
         const msg: ChatMessage = { ...partial, id: makeId("msg"), ts: new Date().toISOString() };
         const updated = { ...chats, [matchId]: [...list, msg] };
         const match = matches.find((m) => m.id === matchId);
@@ -261,6 +291,98 @@ export const useStore = create<State>()(
           likedYou: likedYou.filter((id) => id !== profileId)
         });
         return { matchId: match.id };
+      },
+
+      recordDiscoverSwipe: (profileId, decision) => {
+        set({ decisions: { ...get().decisions, [profileId]: decision } });
+      },
+
+      addRealMatch: ({ matchId, profile, compatibility: score }) => {
+        const { matches, chats, me } = get();
+        if (matches.some((m) => m.id === matchId)) return;
+        const firstPhoto = profile.media.find((m) => m.kind === "photo")?.url ?? null;
+        const match: Match = {
+          id: matchId,
+          profileId: profile.id,
+          matchedAt: new Date().toISOString(),
+          compatibility: score,
+          icebreakers: suggestIcebreakers(me, profile),
+          unread: 1,
+          otherName: profile.name,
+          otherAge: profile.age,
+          otherPhotoUrl: firstPhoto
+        };
+        const firstMsg: ChatMessage = {
+          id: makeId("msg"),
+          role: "ai",
+          text: `You matched with ${profile.name}. Here are 3 openers tuned to their profile.`,
+          ts: new Date().toISOString()
+        };
+        set({
+          matches: [match, ...matches],
+          chats: { ...chats, [matchId]: [firstMsg] }
+        });
+      },
+
+      bumpDailyLikeIfExplorer: () => {
+        const { me, dailyLikesUsed, dailyLikesDate } = get();
+        if (me.plan !== "explorer") return;
+        const today = todayKey();
+        let likesUsed = dailyLikesUsed;
+        if (dailyLikesDate !== today) likesUsed = 0;
+        set({ dailyLikesUsed: likesUsed + 1, dailyLikesDate: today });
+      },
+
+      mergeMatchesFromApi: (incoming) => {
+        const { matches, chats } = get();
+        const prevById = new Map(matches.map((m) => [m.id, m]));
+        const incIds = new Set(incoming.map((m) => m.id));
+        const mergedIncoming = incoming.map((m) => {
+          const prev = prevById.get(m.id);
+          if (!prev) return m;
+          return {
+            ...m,
+            unread: Math.max(m.unread, prev.unread),
+            icebreakers: prev.icebreakers.length ? prev.icebreakers : m.icebreakers
+          };
+        });
+        const rest = matches.filter((m) => !incIds.has(m.id));
+        const nextMatches = [...mergedIncoming, ...rest].sort(
+          (a, b) => new Date(b.matchedAt).getTime() - new Date(a.matchedAt).getTime()
+        );
+
+        const nextChats = { ...chats };
+        for (const m of mergedIncoming) {
+          if (isDbMatchId(m.id)) continue;
+          const existing = chats[m.id];
+          if (existing && existing.length > 0) continue;
+          const name = m.otherName ?? "your match";
+          const text =
+            m.icebreakers.length > 0
+              ? `You matched with ${name}. Try: ${m.icebreakers[0]}`
+              : `You matched with ${name}. Say hi when you're ready.`;
+          nextChats[m.id] = [
+            {
+              id: makeId("msg"),
+              role: "ai",
+              text,
+              ts: new Date().toISOString()
+            }
+          ];
+        }
+
+        set({ matches: nextMatches, chats: nextChats });
+      },
+
+      hydrateChatFromServer: (matchId, serverMsgs) => {
+        if (!isDbMatchId(matchId)) return;
+        const prev = get().chats[matchId] ?? [];
+        if (serverMsgs.length === 0) return;
+        const ai = prev.filter((m) => m.role === "ai");
+        const next = [...ai, ...serverMsgs].sort(
+          (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+        );
+        set({ chats: { ...get().chats, [matchId]: next } });
       }
     }),
     {
