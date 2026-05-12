@@ -1,8 +1,20 @@
-import { getDownloadUrl, put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
+
+function getBlobToken() {
+  return process.env.BLOB_READ_WRITE_TOKEN;
+}
 
 export async function POST(req: Request) {
   try {
+    const token = getBlobToken();
+    if (!token) {
+      return NextResponse.json(
+        { error: "Missing BLOB_READ_WRITE_TOKEN. Restart dev server after updating .env." },
+        { status: 500 }
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file");
 
@@ -27,7 +39,8 @@ export async function POST(req: Request) {
 
     const blob = await put(key, file, {
       access: "private",
-      addRandomSuffix: true
+      addRandomSuffix: true,
+      token
     });
 
     const viewUrl = `/api/uploads?url=${encodeURIComponent(blob.url)}&v=${Date.now()}`;
@@ -39,6 +52,14 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
+  const token = getBlobToken();
+  if (!token) {
+    return NextResponse.json(
+      { error: "Missing BLOB_READ_WRITE_TOKEN. Restart dev server after updating .env." },
+      { status: 500 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const blobUrl = searchParams.get("url");
   if (!blobUrl || !/^https?:\/\//i.test(blobUrl)) {
@@ -46,14 +67,17 @@ export async function GET(req: Request) {
   }
 
   try {
-    const downloadUrl = getDownloadUrl(blobUrl);
-    const upstream = await fetch(downloadUrl, { cache: "no-store" });
-    if (!upstream.ok || !upstream.body) {
-      return NextResponse.json({ error: "Unable to fetch image from storage." }, { status: 502 });
+    const res = await get(blobUrl, {
+      access: "private",
+      token,
+      useCache: false
+    });
+    if (!res?.stream) {
+      return NextResponse.json({ error: "Image not found in storage." }, { status: 404 });
     }
 
-    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
-    return new Response(upstream.body, {
+    const contentType = res.blob.contentType ?? "image/jpeg";
+    return new Response(res.stream, {
       status: 200,
       headers: {
         "Content-Type": contentType,
