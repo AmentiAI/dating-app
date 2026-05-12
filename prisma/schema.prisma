@@ -1,0 +1,344 @@
+// Preference Plus — Neon Postgres (tables from db/migrations/001_initial_schema.sql)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String    @unique
+  username       String    @unique
+  phone          String?
+  gender         String?
+  interestedIn   String[]  @map("interested_in")
+  birthdate      DateTime? @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isVerified     Boolean   @default(false) @map("is_verified")
+  isPremium      Boolean   @default(false) @map("is_premium")
+  isBanned       Boolean   @default(false) @map("is_banned")
+  lastActive     DateTime? @map("last_active") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  profile                 Profile?
+  preference              Preference?
+  profilePhotos           ProfilePhoto[]
+  userInterests           UserInterest[]
+  swipesInitiated         Swipe[]                   @relation("SwiperSwipes")
+  swipesReceived          Swipe[]                   @relation("SwipedSwipes")
+  matchesAsUser1          Match[]                   @relation("MatchUser1")
+  matchesAsUser2          Match[]                   @relation("MatchUser2")
+  conversationParticipants ConversationParticipant[]
+  messagesSent            Message[]
+  subscriptions           Subscription[]
+  boosts                  Boost[]
+  reportsFiled            Report[]                  @relation("ReporterReports")
+  reportsAgainst          Report[]                  @relation("ReportedReports")
+  blocksMade              Block[]                   @relation("BlockerBlocks")
+  blocksReceived          Block[]                   @relation("BlockedBlocks")
+  notifications           Notification[]
+  aiCompatAsUser1         AiCompatibilityScore[]    @relation("AiCompatUser1")
+  aiCompatAsUser2         AiCompatibilityScore[]    @relation("AiCompatUser2")
+  verificationRequests    VerificationRequest[]
+  profileViewsMade        ProfileView[]             @relation("ViewerViews")
+  profileViewsReceived    ProfileView[]             @relation("ViewedViews")
+  moderationActions       ModerationAuditLog[]      @relation("ModerationActor")
+  moderationTargets       ModerationAuditLog[]      @relation("ModerationTarget")
+
+  @@map("users")
+}
+
+model Profile {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @unique @map("user_id") @db.Uuid
+  bio                String?
+  height             Int?
+  weight             Int?
+  ethnicity          String?
+  religion           String?
+  politics           String?
+  education          String?
+  occupation         String?
+  fitnessLevel       String?   @map("fitness_level")
+  smokingStatus      String?   @map("smoking_status")
+  drinkingStatus     String?   @map("drinking_status")
+  relationshipIntent String?   @map("relationship_intent")
+  latitude           Decimal?  @db.Decimal(10, 7)
+  longitude          Decimal?  @db.Decimal(10, 7)
+  city               String?
+  state              String?
+  country            String?
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model ProfilePhoto {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  photoUrl   String   @map("photo_url")
+  orderIndex Int      @default(0) @map("order_index")
+  isVerified Boolean  @default(false) @map("is_verified")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profile_photos")
+}
+
+model Preference {
+  id                         String   @id @default(uuid()) @db.Uuid
+  userId                     String   @unique @map("user_id") @db.Uuid
+  minAge                     Int?     @map("min_age")
+  maxAge                     Int?     @map("max_age")
+  minHeight                  Int?     @map("min_height")
+  maxHeight                  Int?     @map("max_height")
+  maxDistance                Int?     @map("max_distance")
+  preferredEthnicities       String[] @map("preferred_ethnicities")
+  preferredReligions         String[] @map("preferred_religions")
+  preferredBodyTypes         String[] @map("preferred_body_types")
+  preferredRelationshipTypes String[] @map("preferred_relationship_types")
+  dealbreakers               String[]
+  updatedAt                  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preferences")
+}
+
+model Interest {
+  id    String @id @default(uuid()) @db.Uuid
+  name  String @unique
+
+  userInterests UserInterest[]
+
+  @@map("interests")
+}
+
+model UserInterest {
+  userId     String @map("user_id") @db.Uuid
+  interestId String @map("interest_id") @db.Uuid
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+  @@map("user_interests")
+}
+
+model Swipe {
+  id         String   @id @default(uuid()) @db.Uuid
+  swiperId   String   @map("swiper_id") @db.Uuid
+  swipedId   String   @map("swiped_id") @db.Uuid
+  swipeType  String   @map("swipe_type")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  swiper User @relation("SwiperSwipes", fields: [swiperId], references: [id], onDelete: Cascade)
+  swiped User @relation("SwipedSwipes", fields: [swipedId], references: [id], onDelete: Cascade)
+
+  @@index([swiperId])
+  @@index([swipedId])
+  @@map("swipes")
+}
+
+model Match {
+  id                  String   @id @default(uuid()) @db.Uuid
+  user1Id             String   @map("user1_id") @db.Uuid
+  user2Id             String   @map("user2_id") @db.Uuid
+  compatibilityScore  Int?     @map("compatibility_score")
+  matchedAt           DateTime @default(now()) @map("matched_at") @db.Timestamptz(6)
+  isActive            Boolean  @default(true) @map("is_active")
+
+  user1 User @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2 User @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id, user2Id])
+  @@map("matches")
+}
+
+model Conversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  conversationId String @map("conversation_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  senderId       String    @map("sender_id") @db.Uuid
+  message        String?
+  imageUrl       String?   @map("image_url")
+  isRead         Boolean   @default(false) @map("is_read")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model Subscription {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String?   @map("user_id") @db.Uuid
+  stripeCustomerId     String?   @map("stripe_customer_id")
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
+  plan                 String?
+  status               String?
+  startedAt            DateTime? @map("started_at") @db.Timestamptz(6)
+  expiresAt            DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("subscriptions")
+}
+
+model Boost {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  boostStart DateTime? @map("boost_start") @db.Timestamptz(6)
+  boostEnd   DateTime? @map("boost_end") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("boosts")
+}
+
+model Report {
+  id             String   @id @default(uuid()) @db.Uuid
+  reporterId     String   @map("reporter_id") @db.Uuid
+  reportedUserId String   @map("reported_user_id") @db.Uuid
+  reason         String?
+  details        String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  status         String   @default("pending")
+
+  reporter     User @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUser User @relation("ReportedReports", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([reportedUserId])
+  @@map("reports")
+}
+
+model Block {
+  blockerId String   @map("blocker_id") @db.Uuid
+  blockedId String   @map("blocked_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  blocker User @relation("BlockerBlocks", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockedBlocks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@map("blocks")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String?
+  title     String?
+  body      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model AiCompatibilityScore {
+  id          String   @id @default(uuid()) @db.Uuid
+  user1Id     String   @map("user1_id") @db.Uuid
+  user2Id     String   @map("user2_id") @db.Uuid
+  score       Int?
+  explanation String?
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz(6)
+
+  user1 User @relation("AiCompatUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2 User @relation("AiCompatUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  @@unique([user1Id, user2Id])
+  @@map("ai_compatibility_scores")
+}
+
+model VerificationRequest {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  selfieUrl  String?   @map("selfie_url")
+  status     String    @default("pending")
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("verification_requests")
+}
+
+model ProfileView {
+  id       String   @id @default(uuid()) @db.Uuid
+  viewerId String   @map("viewer_id") @db.Uuid
+  viewedId String   @map("viewed_id") @db.Uuid
+  viewedAt DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
+
+  viewer User @relation("ViewerViews", fields: [viewerId], references: [id], onDelete: Cascade)
+  viewed User @relation("ViewedViews", fields: [viewedId], references: [id], onDelete: Cascade)
+
+  @@index([viewedId, viewedAt(sort: Desc)])
+  @@index([viewerId])
+  @@map("profile_views")
+}
+
+model AppSetting {
+  key   String @id
+  value Json
+
+  @@map("app_settings")
+}
+
+model ModerationAuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  action       String
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor      User? @relation("ModerationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  targetUser User? @relation("ModerationTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([targetUserId])
+  @@index([createdAt(sort: Desc)])
+  @@map("moderation_audit_log")
+}
