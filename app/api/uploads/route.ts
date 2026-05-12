@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       addRandomSuffix: true
     });
 
-    const viewUrl = `/api/uploads?url=${encodeURIComponent(blob.url)}`;
+    const viewUrl = `/api/uploads?url=${encodeURIComponent(blob.url)}&v=${Date.now()}`;
     return NextResponse.json({ url: blob.url, viewUrl, pathname: blob.pathname });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Upload failed";
@@ -45,6 +45,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Invalid blob URL." }, { status: 400 });
   }
 
-  const downloadUrl = getDownloadUrl(blobUrl);
-  return NextResponse.redirect(downloadUrl, { status: 302 });
+  try {
+    const downloadUrl = getDownloadUrl(blobUrl);
+    const upstream = await fetch(downloadUrl, { cache: "no-store" });
+    if (!upstream.ok || !upstream.body) {
+      return NextResponse.json({ error: "Unable to fetch image from storage." }, { status: 502 });
+    }
+
+    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0"
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load image.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

@@ -30,7 +30,42 @@ body {
     @apply rounded-full px-5 py-3 text-base font-medium bg-white/75 border border-line/80 hover:bg-white transition;
   }
   .card {
-    @apply rounded-[2rem] bg-surface border border-line/60 shadow-card;
+    @apply relative overflow-hidden rounded-[2rem] border border-line/70 shadow-card;
+    background:
+      linear-gradient(150deg, rgba(255,255,255,0.95) 0%, rgba(255,250,248,0.96) 42%, rgba(255,242,236,0.9) 100%);
+    isolation: isolate;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260' viewBox='0 0 260 260'%3E%3Cg fill='none' stroke='%23e9b6c2' stroke-width='1.25' stroke-linecap='round' opacity='0.42'%3E%3Cpath d='M20 86c20-44 82-63 126-42 22 11 40 32 48 56'/%3E%3Cpath d='M45 206c39 27 92 27 131 0'/%3E%3Cpath d='M88 36c6 10 17 16 29 16 12 0 23-6 29-16'/%3E%3C/g%3E%3Cg fill='none' stroke='%23f2cab6' stroke-width='1' opacity='0.55'%3E%3Ccircle cx='212' cy='56' r='18'/%3E%3Ccircle cx='226' cy='42' r='7'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right -34px top -30px;
+    background-size: 190px 190px;
+    z-index: 0;
+  }
+  .card::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: calc(2rem - 2px);
+    pointer-events: none;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    z-index: 0;
+  }
+  .card > * {
+    position: relative;
+    z-index: 1;
+  }
+  .card-soft-divider {
+    border-top: 1px solid rgba(229, 190, 176, 0.45);
+    box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.55) inset;
+  }
+  .card-title {
+    @apply font-display text-xl font-semibold text-ink;
+    letter-spacing: -0.01em;
   }
   .ring-grad {
     background: conic-gradient(from 180deg at 50% 50%, #e98ca0, #f2b0a3, #c6778b, #e98ca0);
