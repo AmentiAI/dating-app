@@ -1,10 +1,40 @@
 "use client";
 
-import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BottomNav } from "@/components/app/BottomNav";
+import { toProxyPhotoUrl } from "@/lib/media";
 import { useStore } from "@/lib/store";
+
+const intentOptions = ["long-term", "marriage", "casual", "friends", "open-to-anything"] as const;
+const vibeOptions = [
+  "homebody",
+  "adventurer",
+  "creative",
+  "athletic",
+  "foodie",
+  "intellectual",
+  "spiritual",
+  "ambitious",
+  "chill",
+  "party",
+  "outdoorsy",
+  "techy",
+  "artsy",
+  "musical",
+  "bookish"
+] as const;
+const raceOptions = ["Asian", "Black", "Latino", "Middle Eastern", "White", "South Asian", "Mixed", "Other"];
+const dealbreakerOptions = [
+  "Smoking",
+  "Long distance",
+  "Intentions mismatch",
+  "Wants kids",
+  "Inactive lifestyle",
+  "Heavy drinking",
+  "Politics",
+  "Religion"
+];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -20,9 +50,22 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [maxDistanceKm, setMaxDistanceKm] = useState(me.filters.maxDistanceKm);
+  const [ageMin, setAgeMin] = useState(me.filters.ageRange[0]);
+  const [ageMax, setAgeMax] = useState(me.filters.ageRange[1]);
+  const [heightMin, setHeightMin] = useState(me.filters.heightRange?.[0] ?? 64);
+  const [heightMax, setHeightMax] = useState(me.filters.heightRange?.[1] ?? 74);
+  const [weightMin, setWeightMin] = useState(me.filters.weightRange?.[0] ?? 110);
+  const [weightMax, setWeightMax] = useState(me.filters.weightRange?.[1] ?? 220);
+  const [preferredRaces, setPreferredRaces] = useState<string[]>(me.filters.preferredRaces ?? []);
+  const [preferredIntents, setPreferredIntents] = useState<string[]>(me.filters.intents ?? []);
+  const [preferredVibes, setPreferredVibes] = useState<string[]>(me.filters.vibes ?? []);
+  const [verifiedOnly, setVerifiedOnly] = useState(me.filters.verifiedOnly);
+  const [dealbreakers, setDealbreakers] = useState<string[]>(me.dealbreakers ?? []);
 
   const photoUrls = useMemo(
-    () => me.media.filter((m) => m.kind === "photo").map((m) => m.url),
+    () => me.media.filter((m) => m.kind === "photo").map((m) => toProxyPhotoUrl(m.url)),
     [me.media]
   );
 
@@ -33,7 +76,25 @@ export default function ProfilePage() {
     setIntent(me.intent);
     setInterests(me.interests.join(", "));
     setPreviewIndex(0);
-  }, [me]);
+    setMaxDistanceKm(me.filters.maxDistanceKm);
+    setAgeMin(me.filters.ageRange[0]);
+    setAgeMax(me.filters.ageRange[1]);
+    setHeightMin(me.filters.heightRange?.[0] ?? 64);
+    setHeightMax(me.filters.heightRange?.[1] ?? 74);
+    setWeightMin(me.filters.weightRange?.[0] ?? 110);
+    setWeightMax(me.filters.weightRange?.[1] ?? 220);
+    setPreferredRaces(me.filters.preferredRaces ?? []);
+    setPreferredIntents(me.filters.intents ?? []);
+    setPreferredVibes(me.filters.vibes ?? []);
+    setVerifiedOnly(me.filters.verifiedOnly);
+    setDealbreakers(me.dealbreakers ?? []);
+    const normalized = me.media.map((m) =>
+      m.kind === "photo" ? { ...m, url: toProxyPhotoUrl(m.url) } : m
+    );
+    if (JSON.stringify(normalized) !== JSON.stringify(me.media)) {
+      updateMe({ media: normalized });
+    }
+  }, [me, updateMe]);
 
   function save(e: FormEvent) {
     e.preventDefault();
@@ -42,10 +103,22 @@ export default function ProfilePage() {
       city: city.trim() || me.city,
       bio: bio.trim() || me.bio,
       intent,
+      dealbreakers,
       interests: interests
         .split(",")
         .map((x) => x.trim())
-        .filter(Boolean)
+        .filter(Boolean),
+      filters: {
+        ...me.filters,
+        maxDistanceKm,
+        ageRange: [Math.min(ageMin, ageMax), Math.max(ageMin, ageMax)],
+        heightRange: [Math.min(heightMin, heightMax), Math.max(heightMin, heightMax)],
+        weightRange: [Math.min(weightMin, weightMax), Math.max(weightMin, weightMax)],
+        preferredRaces,
+        intents: preferredIntents as typeof me.filters.intents,
+        vibes: preferredVibes as typeof me.filters.vibes,
+        verifiedOnly
+      }
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 1400);
@@ -54,7 +127,7 @@ export default function ProfilePage() {
   function setPhotos(nextUrls: string[]) {
     updateMe({
       media: [
-        ...nextUrls.map((url) => ({ kind: "photo" as const, url })),
+        ...nextUrls.map((url) => ({ kind: "photo" as const, url: toProxyPhotoUrl(url) })),
         ...me.media.filter((m) => m.kind !== "photo")
       ]
     });
@@ -76,7 +149,7 @@ export default function ProfilePage() {
         if (!res.ok || (!json.viewUrl && !json.url)) {
           throw new Error(json.error ?? "Photo upload failed.");
         }
-        uploaded.push(json.viewUrl ?? json.url!);
+        uploaded.push(toProxyPhotoUrl(json.viewUrl ?? json.url!));
       }
 
       const next = [...photoUrls];
@@ -107,12 +180,38 @@ export default function ProfilePage() {
     setPreviewIndex(to);
   }
 
+  function toggleChip(current: string[], value: string, setter: (next: string[]) => void) {
+    setter(current.includes(value) ? current.filter((x) => x !== value) : [...current, value]);
+  }
+
   return (
     <main className="min-h-screen bg-bg px-4 pb-28 pt-4 text-ink sm:pt-5">
       <header className="mx-auto w-full max-w-xl">
         <h1 className="font-display text-2xl font-semibold">Edit Profile</h1>
+        <div className="mt-3 inline-flex rounded-full border border-line/70 bg-white/75 p-1">
+          <button
+            type="button"
+            onClick={() => setTab("edit")}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              tab === "edit" ? "bg-grad-pill text-white shadow-glow" : "text-sub hover:text-ink"
+            }`}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("preview")}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              tab === "preview" ? "bg-grad-pill text-white shadow-glow" : "text-sub hover:text-ink"
+            }`}
+          >
+            Preview
+          </button>
+        </div>
       </header>
 
+      {tab === "edit" && (
+        <>
       <section className="card mx-auto mt-4 max-w-xl p-5 sm:mt-6 sm:p-6">
         <h2 className="card-title">Your photos</h2>
         <p className="mt-1 text-sm text-sub">Add, remove, and reorder up to 6 photos.</p>
@@ -165,51 +264,6 @@ export default function ProfilePage() {
             </article>
           ))}
           {photoUrls.length === 0 && <p className="col-span-full text-sm text-sub">No photos yet.</p>}
-          </div>
-        </div>
-      </section>
-
-      <section className="card mx-auto mt-4 max-w-xl p-5 sm:mt-6 sm:p-6">
-        <h2 className="card-title">Profile preview</h2>
-        <p className="mt-1 text-sm text-sub">This is how people click through your photos.</p>
-
-        <div className="mt-4 overflow-hidden rounded-2xl border border-line/60 bg-surface2">
-          <div className="relative aspect-[4/5]">
-            {photoUrls[previewIndex] ? (
-              <img src={photoUrls[previewIndex]} alt="Preview" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted">Add photos to preview</div>
-            )}
-            <div className="absolute inset-x-3 top-3 flex gap-1.5">
-              {(photoUrls.length ? photoUrls : [0]).map((_, i) => (
-                <span
-                  key={`bar-${i}`}
-                  className={`h-1 flex-1 rounded-full ${i === previewIndex ? "bg-white" : "bg-white/40"}`}
-                />
-              ))}
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/75 to-transparent p-4 text-white">
-              <p className="text-lg font-semibold">{name || me.name}</p>
-              <p className="text-sm text-white/85">{city || me.city}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 border-t border-line/60 p-3">
-            <button
-              type="button"
-              className="btn-ghost w-full"
-              onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
-              disabled={previewIndex <= 0}
-            >
-              Previous photo
-            </button>
-            <button
-              type="button"
-              className="pill-grad w-full py-2.5 text-sm"
-              onClick={() => setPreviewIndex((i) => Math.min(Math.max(0, photoUrls.length - 1), i + 1))}
-              disabled={photoUrls.length === 0 || previewIndex >= photoUrls.length - 1}
-            >
-              Next photo
-            </button>
           </div>
         </div>
       </section>
@@ -269,6 +323,188 @@ export default function ProfilePage() {
           />
         </label>
 
+        <div className="card-soft-divider pt-4">
+          <h3 className="font-display text-lg font-semibold">Match preferences</h3>
+          <p className="mt-1 text-xs text-sub">Everything here is editable any time.</p>
+        </div>
+
+        <label className="block text-sm text-sub">
+          Distance: <span className="font-semibold text-ink">{maxDistanceKm} km</span>
+          <input
+            type="range"
+            min={1}
+            max={200}
+            value={maxDistanceKm}
+            onChange={(e) => setMaxDistanceKm(Number(e.target.value))}
+            className="mt-2 w-full accent-accent2"
+          />
+        </label>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-sm text-sub">
+            Min age: <span className="font-semibold text-ink">{ageMin}</span>
+            <input
+              type="range"
+              min={18}
+              max={80}
+              value={ageMin}
+              onChange={(e) => setAgeMin(Number(e.target.value))}
+              className="mt-2 w-full accent-accent2"
+            />
+          </label>
+          <label className="block text-sm text-sub">
+            Max age: <span className="font-semibold text-ink">{ageMax}</span>
+            <input
+              type="range"
+              min={18}
+              max={80}
+              value={ageMax}
+              onChange={(e) => setAgeMax(Number(e.target.value))}
+              className="mt-2 w-full accent-accent2"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-sm text-sub">
+            Min height (in): <span className="font-semibold text-ink">{heightMin}</span>
+            <input
+              type="range"
+              min={48}
+              max={84}
+              value={heightMin}
+              onChange={(e) => setHeightMin(Number(e.target.value))}
+              className="mt-2 w-full accent-accent2"
+            />
+          </label>
+          <label className="block text-sm text-sub">
+            Max height (in): <span className="font-semibold text-ink">{heightMax}</span>
+            <input
+              type="range"
+              min={48}
+              max={84}
+              value={heightMax}
+              onChange={(e) => setHeightMax(Number(e.target.value))}
+              className="mt-2 w-full accent-accent2"
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-sm text-sub">
+            Min weight (lb): <span className="font-semibold text-ink">{weightMin}</span>
+            <input
+              type="range"
+              min={80}
+              max={350}
+              value={weightMin}
+              onChange={(e) => setWeightMin(Number(e.target.value))}
+              className="mt-2 w-full accent-accent2"
+            />
+          </label>
+          <label className="block text-sm text-sub">
+            Max weight (lb): <span className="font-semibold text-ink">{weightMax}</span>
+            <input
+              type="range"
+              min={80}
+              max={350}
+              value={weightMax}
+              onChange={(e) => setWeightMax(Number(e.target.value))}
+              className="mt-2 w-full accent-accent2"
+            />
+          </label>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm text-sub">Intent preferences</p>
+          <div className="flex flex-wrap gap-2">
+            {intentOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => toggleChip(preferredIntents, option, setPreferredIntents)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  preferredIntents.includes(option)
+                    ? "border-accent3/60 bg-accent3/15 text-ink"
+                    : "border-line bg-surface text-sub"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm text-sub">Vibe preferences</p>
+          <div className="flex flex-wrap gap-2">
+            {vibeOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => toggleChip(preferredVibes, option, setPreferredVibes)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  preferredVibes.includes(option)
+                    ? "border-accent/60 bg-accent/15 text-ink"
+                    : "border-line bg-surface text-sub"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm text-sub">Race preferences</p>
+          <div className="flex flex-wrap gap-2">
+            {raceOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => toggleChip(preferredRaces, option, setPreferredRaces)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  preferredRaces.includes(option)
+                    ? "border-gold/60 bg-gold/15 text-ink"
+                    : "border-line bg-surface text-sub"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm text-sub">Dealbreakers</p>
+          <div className="flex flex-wrap gap-2">
+            {dealbreakerOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => toggleChip(dealbreakers, option, setDealbreakers)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                  dealbreakers.includes(option)
+                    ? "border-accent2/60 bg-accent2/20 text-ink"
+                    : "border-line bg-surface text-sub"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="flex items-center justify-between rounded-2xl border border-line/70 bg-surface px-4 py-3">
+          <span className="text-sm font-medium text-ink">Show only verified profiles</span>
+          <input
+            type="checkbox"
+            checked={verifiedOnly}
+            onChange={(e) => setVerifiedOnly(e.target.checked)}
+            className="h-4 w-4 accent-accent2"
+          />
+        </label>
+
         <button type="submit" className="pill-grad w-full">
           {saved ? "Saved" : "Save profile"}
         </button>
@@ -283,6 +519,56 @@ export default function ProfilePage() {
           Log out
         </button>
       </form>
+        </>
+      )}
+
+      {tab === "preview" && (
+        <section className="card mx-auto mt-4 max-w-xl p-5 sm:mt-6 sm:p-6">
+          <h2 className="card-title">Profile preview</h2>
+          <p className="mt-1 text-sm text-sub">This is how people click through your photos.</p>
+
+          <div className="mt-4 overflow-hidden rounded-2xl border border-line/60 bg-surface2">
+            <div className="relative aspect-[4/5]">
+              {photoUrls[previewIndex] ? (
+                <img src={photoUrls[previewIndex]} alt="Preview" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted">Add photos to preview</div>
+              )}
+              <div className="absolute inset-x-3 top-3 flex gap-1.5">
+                {(photoUrls.length ? photoUrls : [0]).map((_, i) => (
+                  <span
+                    key={`bar-${i}`}
+                    className={`h-1 flex-1 rounded-full ${i === previewIndex ? "bg-white" : "bg-white/40"}`}
+                  />
+                ))}
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/75 to-transparent p-4 text-white">
+                <p className="text-lg font-semibold">{name || me.name}</p>
+                <p className="text-sm text-white/85">{city || me.city}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-white/80">{bio || me.bio}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-t border-line/60 p-3">
+              <button
+                type="button"
+                className="btn-ghost w-full"
+                onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
+                disabled={previewIndex <= 0}
+              >
+                Previous photo
+              </button>
+              <button
+                type="button"
+                className="pill-grad w-full py-2.5 text-sm"
+                onClick={() => setPreviewIndex((i) => Math.min(Math.max(0, photoUrls.length - 1), i + 1))}
+                disabled={photoUrls.length === 0 || previewIndex >= photoUrls.length - 1}
+              >
+                Next photo
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <BottomNav />
     </main>

@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toProxyPhotoUrl } from "@/lib/media";
 import type { Intent } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
@@ -170,16 +171,10 @@ export function OnboardingFlow() {
       ],
       media:
         photos.length > 0
-          ? photos.map((url) => ({ kind: "photo" as const, url }))
+          ? photos.map((url) => ({ kind: "photo" as const, url: toProxyPhotoUrl(url) }))
           : me.media
     });
     router.push("/discover");
-  }
-
-  function addStockPhotos() {
-    const a = "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80";
-    const b = "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=900&q=80";
-    setPhotos((p) => (p.length >= 2 ? p : [a, b]));
   }
 
   async function uploadSelected(files: FileList | null) {
@@ -198,7 +193,7 @@ export function OnboardingFlow() {
         if (!res.ok || (!json.viewUrl && !json.url)) {
           throw new Error(json.error ?? "Image upload failed.");
         }
-        urls.push(json.viewUrl ?? json.url!);
+        urls.push(toProxyPhotoUrl(json.viewUrl ?? json.url!));
       }
 
       setPhotos((prev) => [...prev, ...urls].slice(0, 6));
@@ -638,15 +633,7 @@ export function OnboardingFlow() {
                 />
                 {uploading ? "Uploading photos..." : "Select photos from camera roll"}
               </label>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={addStockPhotos}
-                  className="btn-ghost text-xs"
-                  disabled={uploading}
-                >
-                  Use starter photos
-                </button>
+              <div className="mt-3 flex items-center justify-end">
                 <p className="text-xs text-muted">{photos.length}/6 uploaded</p>
               </div>
               {uploadError && (

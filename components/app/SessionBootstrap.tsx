@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { normalizeMedia } from "@/lib/media";
 import { useStore } from "@/lib/store";
 
 type MeResponse = {
@@ -48,6 +49,11 @@ export function SessionBootstrap() {
       }
       updateMe(patch);
       setPlan(data.user.plan);
+      const curr = useStore.getState().me.media;
+      const fixed = normalizeMedia(curr);
+      if (JSON.stringify(curr) !== JSON.stringify(fixed)) {
+        updateMe({ media: fixed });
+      }
     }
     void run();
     return () => {
