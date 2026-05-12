@@ -40,9 +40,9 @@ export default async function HomePage() {
                 dbOk ? "border-accent3/40 text-accent3" : "border-gold/40 text-gold"
               }`}
             >
-              {dbOk ? "Neon connected" : "DB offline"}
+              {dbOk ? "Dating app live" : "Service syncing"}
             </span>
-            <Link href="/onboarding" className="pill-grad px-4 py-2.5 text-xs shadow-glow sm:px-5 sm:py-3 sm:text-sm">
+            <Link href="/signup" className="pill-grad px-4 py-2.5 text-xs shadow-glow sm:px-5 sm:py-3 sm:text-sm">
               Create account
             </Link>
           </nav>
@@ -54,38 +54,38 @@ export default async function HomePage() {
           <div className="relative">
             <div className="pointer-events-none absolute -left-10 top-16 h-40 w-40 rounded-full bg-accent/10 blur-3xl" />
             <p className="mb-4 inline-flex rounded-full border border-line/70 bg-white/75 px-3 py-1 text-xs font-medium text-sub">
-              Prototype · investor mode
+              Built for intentional dating
             </p>
-            <h1 className="font-display text-3xl font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
+            <h1 className="font-display text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
               Find people who actually fit what you&apos;re looking for.
             </h1>
-            <p className="mt-5 max-w-xl text-base text-sub sm:text-lg">
+            <p className="mt-5 max-w-xl text-lg text-sub sm:text-xl">
               Mutual preferences, honest dealbreakers, and compatibility you can see before you invest
               emotion. Built for higher-signal matches—not endless noise.
             </p>
             <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
-              <Link href="/onboarding" className="pill-grad text-center">
+              <Link href="/signup" className="pill-grad text-center">
                 Start onboarding
               </Link>
               <Link href="/discover" className="btn-ghost text-center">
                 Preview the feed
               </Link>
             </div>
-            <dl className="mt-8 grid max-w-lg grid-cols-1 gap-3 text-left sm:mt-10 sm:grid-cols-3 sm:gap-4">
-              <div className="rounded-2xl border border-line/60 bg-surface/60 p-4">
+            <dl className="mt-8 grid max-w-lg grid-cols-1 gap-4 text-left sm:mt-10 sm:grid-cols-3 sm:gap-5">
+              <div className="rounded-2xl border border-line/60 bg-surface/60 p-5">
                 <dt className="text-xs uppercase tracking-wide text-muted">Hook</dt>
-                <dd className="mt-1 text-sm font-semibold text-ink">Mutual compatibility gate</dd>
+                <dd className="mt-1 text-base font-semibold text-ink">Mutual compatibility gate</dd>
               </div>
-              <div className="rounded-2xl border border-line/60 bg-surface/60 p-4">
+              <div className="rounded-2xl border border-line/60 bg-surface/60 p-5">
                 <dt className="text-xs uppercase tracking-wide text-muted">Trust</dt>
-                <dd className="mt-1 text-sm font-semibold text-ink">Private preferences</dd>
+                <dd className="mt-1 text-base font-semibold text-ink">Private preferences</dd>
               </div>
-              <div className="rounded-2xl border border-line/60 bg-surface/60 p-4">
+              <div className="rounded-2xl border border-line/60 bg-surface/60 p-5">
                 <dt className="text-xs uppercase tracking-wide text-muted">Premium</dt>
-                <dd className="mt-1 text-sm font-semibold text-ink">Elite matches & insights</dd>
+                <dd className="mt-1 text-base font-semibold text-ink">Elite matches & insights</dd>
               </div>
             </dl>
-            <div className="mt-6 rounded-2xl border border-accent2/30 bg-accent2/10 px-4 py-3 text-xs text-sub">
+            <div className="mt-6 rounded-2xl border border-accent2/30 bg-accent2/10 px-5 py-4 text-sm text-sub">
               New: onboarding now includes race and weight preference filters to sharpen mutual-fit matching.
             </div>
           </div>
@@ -103,7 +103,7 @@ export default async function HomePage() {
               <div className="rounded-[22px] bg-gradient-to-br from-surface2 to-surface p-6 sm:p-8">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold">Compatibility preview</p>
-                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-sub">Live mock</span>
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-sub">Live</span>
                 </div>
                 <div className="mt-6 flex items-end gap-2">
                   <span className="font-display text-6xl font-semibold text-ink">92</span>
@@ -124,8 +124,8 @@ export default async function HomePage() {
                   </li>
                 </ul>
                 <div className="mt-8 rounded-2xl border border-line/70 bg-white/70 p-4 text-xs text-muted">
-                  AI summaries, icebreakers, and moderation ship next—this shell is for narrative, UX, and
-                  Neon-backed persistence.
+                  AI summaries, icebreakers, and moderation are integrated to help you match with people who fit
+                  your real relationship goals.
                 </div>
               </div>
             </div>
@@ -177,7 +177,7 @@ export default async function HomePage() {
 
       <section className="border-t border-line/60 bg-bg pb-16 pt-10 sm:pb-20 sm:pt-12">
         <div className="mx-auto max-w-6xl px-4 text-center sm:px-5">
-          <p className="text-sm text-sub">Social proof (mock)</p>
+          <p className="text-sm text-sub">Social proof</p>
           <p className="mx-auto mt-4 max-w-2xl font-display text-xl font-medium leading-snug text-ink sm:text-2xl">
             “I’d rather see a 94% compatibility reveal than another ‘wyd’ at midnight.”
           </p>
@@ -186,7 +186,7 @@ export default async function HomePage() {
       </section>
 
       <footer className="border-t border-line/60 py-10 text-center text-xs text-muted">
-        Preference Plus · prototype · {new Date().getFullYear()}
+        Preference Plus · {new Date().getFullYear()}
       </footer>
     </main>
   );

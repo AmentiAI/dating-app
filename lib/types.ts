@@ -116,7 +116,9 @@ export type Me = {
   media: MediaItem[];
   personality: Profile["personality"];
   filters: Filters;
+  plan: "explorer" | "plus" | "premium" | "elite";
   premium: boolean;
+  boostCredits: number;
   verified: boolean;
   dealbreakers: string[];
   /** user's onboarding completion 0..1 */

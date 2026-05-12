@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
+import { SessionBootstrap } from "@/components/app/SessionBootstrap";
 import { FloatingHeartsBackground } from "@/components/ui/FloatingHeartsBackground";
 import "./globals.css";
 
@@ -18,7 +19,7 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Preference Plus — intentional dating",
   description:
-    "Mutual compatibility, transparent fit signals, and private preferences. Prototype built for demos and investor conversations.",
+    "Mutual compatibility, transparent fit signals, and private preferences for intentional dating.",
   applicationName: "Preference Plus"
 };
 
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${dmSans.variable} ${fraunces.variable}`}>
       <body className={`${dmSans.className} min-h-screen bg-bg font-sans antialiased text-ink`}>
         <FloatingHeartsBackground />
+        <SessionBootstrap />
         <div className="relative z-10">{children}</div>
       </body>
     </html>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MOCK_PROFILES } from "@/lib/mockData";
 import { useStore } from "@/lib/store";
 
@@ -12,6 +12,9 @@ export default function ChatPage() {
   const matches = useStore((s) => s.matches);
   const chats = useStore((s) => s.chats);
   const sendMessage = useStore((s) => s.sendMessage);
+  const markMatchRead = useStore((s) => s.markMatchRead);
+  const typing = useStore((s) => s.typingByMatch[matchId] ?? false);
+  const me = useStore((s) => s.me);
 
   const match = useMemo(() => matches.find((m) => m.id === matchId), [matches, matchId]);
   const profile = useMemo(
@@ -20,13 +23,22 @@ export default function ChatPage() {
   );
   const thread = chats[matchId] ?? [];
   const [text, setText] = useState("");
+  const hasReplyAfterLastMe = useMemo(() => {
+    const lastMeIndex = thread.map((m) => m.role).lastIndexOf("me");
+    if (lastMeIndex < 0) return false;
+    return thread.slice(lastMeIndex + 1).some((m) => m.role === "them");
+  }, [thread]);
+
+  useEffect(() => {
+    markMatchRead(matchId);
+  }, [markMatchRead, matchId]);
 
   if (!match) {
     return (
       <div className="min-h-screen bg-bg px-5 py-16 text-ink">
         <p className="text-sm text-sub">Match not found.</p>
-        <Link href="/matches" className="mt-4 inline-block text-sm text-accent2">
-          ← Back to matches
+        <Link href="/messages" className="mt-4 inline-block text-sm text-accent2">
+          ← Back to messages
         </Link>
       </div>
     );
@@ -34,9 +46,9 @@ export default function ChatPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-ink">
-      <header className="sticky top-0 z-10 border-b border-line/60 bg-bg/90 px-5 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-lg items-center gap-3">
-          <Link href="/matches" className="text-sm text-sub">
+      <header className="sticky top-0 z-10 border-b border-line/60 bg-bg/90 px-4 py-4 backdrop-blur-xl sm:px-5">
+        <div className="mx-auto flex max-w-xl items-center gap-3">
+          <Link href="/messages" className="text-sm text-sub">
             ←
           </Link>
           <div>
@@ -46,11 +58,11 @@ export default function ChatPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5">
         {thread.map((m) => (
           <div
             key={m.id}
-            className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+            className={`max-w-[88%] rounded-2xl px-5 py-3.5 text-base leading-relaxed ${
               m.role === "me"
                 ? "ml-auto bg-gradient-to-br from-accent/90 to-accent2/90 text-white"
                 : m.role === "ai"
@@ -61,6 +73,10 @@ export default function ChatPage() {
             {m.text}
           </div>
         ))}
+        {typing && <p className="text-xs text-muted">Typing...</p>}
+        {me.plan !== "explorer" && hasReplyAfterLastMe && (
+          <p className="text-right text-xs text-muted">Seen</p>
+        )}
       </div>
 
       <form
@@ -73,14 +89,14 @@ export default function ChatPage() {
           setText("");
         }}
       >
-        <div className="mx-auto flex max-w-lg gap-2">
+        <div className="mx-auto flex max-w-xl gap-2">
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Message…"
-            className="flex-1 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink outline-none ring-accent2/30 focus:ring-2"
+            className="flex-1 rounded-2xl border border-line bg-surface px-4 py-3.5 text-base text-ink outline-none ring-accent2/30 focus:ring-2"
           />
-          <button type="submit" className="pill-grad px-5 py-3 text-sm">
+          <button type="submit" className="pill-grad px-6 py-3.5 text-base">
             Send
           </button>
         </div>

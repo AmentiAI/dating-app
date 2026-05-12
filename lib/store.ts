@@ -18,17 +18,24 @@ type State = {
   likedYou: string[];
   /** boosts active until iso */
   boostUntil?: string;
+  typingByMatch: Record<string, boolean>;
+  dailyLikesUsed: number;
+  dailyLikesDate: string;
 
   // actions
-  decide: (profileId: string, decision: Decision) => { matched: boolean; profile?: Profile };
+  decide: (profileId: string, decision: Decision) => { matched: boolean; profile?: Profile; blocked?: string };
   rewind: () => void;
   sendMessage: (matchId: string, msg: Omit<ChatMessage, "id" | "ts">) => void;
   reactToMessage: (matchId: string, msgId: string, reaction: string) => void;
   toggleMomentLike: (momentId: string) => void;
   updateMe: (patch: Partial<Me>) => void;
   updateFilters: (patch: Partial<Filters>) => void;
+  setPlan: (plan: Me["plan"]) => void;
+  addBoostCredits: (count: number) => void;
   resetDeck: () => void;
   startBoost: (mins: number) => void;
+  markMatchRead: (matchId: string) => void;
+  likeBack: (profileId: string) => { matchId?: string };
 };
 
 const defaultMe: Me = {
@@ -59,7 +66,9 @@ const defaultMe: Me = {
     weightRange: [110, 220],
     preferredRaces: []
   },
+  plan: "explorer",
   premium: false,
+  boostCredits: 0,
   verified: false,
   dealbreakers: ["smoking"],
   onboarded: false
@@ -67,6 +76,10 @@ const defaultMe: Me = {
 
 function makeId(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export const useStore = create<State>()(
@@ -79,11 +92,24 @@ export const useStore = create<State>()(
       chats: {},
       moments: MOCK_MOMENTS,
       likedYou: ["p_kai", "p_iris", "p_devon"],
+      typingByMatch: {},
+      dailyLikesUsed: 0,
+      dailyLikesDate: todayKey(),
 
       decide: (profileId, decision) => {
         const { decisions, profiles, me, matches, chats } = get();
         const profile = profiles.find((p) => p.id === profileId);
         if (!profile) return { matched: false };
+        const isLike = decision === "like" || decision === "superlike";
+        const today = todayKey();
+        let likesUsed = get().dailyLikesUsed;
+        if (get().dailyLikesDate !== today) {
+          likesUsed = 0;
+          set({ dailyLikesUsed: 0, dailyLikesDate: today });
+        }
+        if (me.plan === "explorer" && isLike && likesUsed >= 10) {
+          return { matched: false, blocked: "Explorer includes 10 likes per day. Upgrade for unlimited likes." };
+        }
 
         const newDecisions = { ...decisions, [profileId]: decision };
 
@@ -109,12 +135,18 @@ export const useStore = create<State>()(
           set({
             decisions: newDecisions,
             matches: [match, ...matches],
-            chats: { ...chats, [match.id]: [firstMsg] }
+            chats: { ...chats, [match.id]: [firstMsg] },
+            dailyLikesUsed: isLike ? likesUsed + 1 : likesUsed,
+            dailyLikesDate: today
           });
           return { matched: true, profile };
         }
 
-        set({ decisions: newDecisions });
+        set({
+          decisions: newDecisions,
+          dailyLikesUsed: isLike ? likesUsed + 1 : likesUsed,
+          dailyLikesDate: today
+        });
         return { matched: false };
       },
 
@@ -129,22 +161,29 @@ export const useStore = create<State>()(
       },
 
       sendMessage: (matchId, partial) => {
-        const { chats, matches } = get();
+        const { chats, matches, typingByMatch } = get();
         const list = chats[matchId] ?? [];
         const msg: ChatMessage = { ...partial, id: makeId("msg"), ts: new Date().toISOString() };
         const updated = { ...chats, [matchId]: [...list, msg] };
-
-        // Mock auto-reply from "them" after a like-real delay would normally be timer-driven;
-        // we synthesize a reply immediately with role 'them' so chats feel alive on first load.
         const match = matches.find((m) => m.id === matchId);
         if (match && partial.role === "me") {
-          const reply: ChatMessage = {
-            id: makeId("msg"),
-            role: "them",
-            text: pickReply(partial.text ?? ""),
-            ts: new Date(Date.now() + 1500).toISOString()
-          };
-          updated[matchId] = [...updated[matchId], reply];
+          set({ chats: updated, typingByMatch: { ...typingByMatch, [matchId]: true } });
+          setTimeout(() => {
+            const curr = get();
+            const currThread = curr.chats[matchId] ?? [];
+            const reply: ChatMessage = {
+              id: makeId("msg"),
+              role: "them",
+              text: pickReply(partial.text ?? ""),
+              ts: new Date().toISOString()
+            };
+            set({
+              chats: { ...curr.chats, [matchId]: [...currThread, reply] },
+              matches: curr.matches.map((m) => (m.id === matchId ? { ...m, unread: m.unread + 1 } : m)),
+              typingByMatch: { ...curr.typingByMatch, [matchId]: false }
+            });
+          }, 1200);
+          return;
         }
         set({ chats: updated });
       },
@@ -174,12 +213,54 @@ export const useStore = create<State>()(
       updateMe: (patch) => set({ me: { ...get().me, ...patch } }),
       updateFilters: (patch) =>
         set({ me: { ...get().me, filters: { ...get().me.filters, ...patch } } }),
+      setPlan: (plan) =>
+        set({
+          me: {
+            ...get().me,
+            plan,
+            premium: plan !== "explorer"
+          }
+        }),
+      addBoostCredits: (count) =>
+        set({
+          me: {
+            ...get().me,
+            boostCredits: Math.max(0, get().me.boostCredits + count)
+          }
+        }),
 
       resetDeck: () => set({ decisions: {} }),
 
       startBoost: (mins) => {
         const until = new Date(Date.now() + mins * 60_000).toISOString();
         set({ boostUntil: until });
+      },
+
+      markMatchRead: (matchId) =>
+        set({
+          matches: get().matches.map((m) => (m.id === matchId ? { ...m, unread: 0 } : m))
+        }),
+
+      likeBack: (profileId) => {
+        const { matches, chats, profiles, me, likedYou } = get();
+        const existing = matches.find((m) => m.profileId === profileId);
+        if (existing) return { matchId: existing.id };
+        const profile = profiles.find((p) => p.id === profileId);
+        if (!profile) return {};
+        const match: Match = {
+          id: makeId("match"),
+          profileId,
+          matchedAt: new Date().toISOString(),
+          compatibility: compatibility(me, profile),
+          icebreakers: suggestIcebreakers(me, profile),
+          unread: 0
+        };
+        set({
+          matches: [match, ...matches],
+          chats: { ...chats, [match.id]: [] },
+          likedYou: likedYou.filter((id) => id !== profileId)
+        });
+        return { matchId: match.id };
       }
     }),
     {
@@ -191,7 +272,9 @@ export const useStore = create<State>()(
         chats: s.chats,
         moments: s.moments,
         likedYou: s.likedYou,
-        boostUntil: s.boostUntil
+        boostUntil: s.boostUntil,
+        dailyLikesUsed: s.dailyLikesUsed,
+        dailyLikesDate: s.dailyLikesDate
       })
     }
   )

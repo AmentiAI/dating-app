@@ -1,5 +1,5 @@
 /**
- * Applies db/migrations/001_initial_schema.sql using DATABASE_URL from .env
+ * Applies all SQL files in db/migrations using DATABASE_URL from .env
  * Run: node scripts/migrate.cjs
  */
 const fs = require("node:fs");
@@ -17,8 +17,11 @@ if (url.includes("channel_binding=require")) {
   url = url.replace(/&channel_binding=require\b/i, "");
 }
 
-const sqlPath = path.join(__dirname, "..", "db", "migrations", "001_initial_schema.sql");
-const sql = fs.readFileSync(sqlPath, "utf8");
+const migrationsDir = path.join(__dirname, "..", "db", "migrations");
+const migrationFiles = fs
+  .readdirSync(migrationsDir)
+  .filter((f) => f.endsWith(".sql"))
+  .sort((a, b) => a.localeCompare(b, "en"));
 
 const client = new pg.Client({
   connectionString: url,
@@ -28,8 +31,12 @@ const client = new pg.Client({
 (async () => {
   await client.connect();
   try {
-    await client.query(sql);
-    console.log("Migration applied:", sqlPath);
+    for (const file of migrationFiles) {
+      const fullPath = path.join(migrationsDir, file);
+      const sql = fs.readFileSync(fullPath, "utf8");
+      await client.query(sql);
+      console.log("Migration applied:", fullPath);
+    }
   } finally {
     await client.end();
   }

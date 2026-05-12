@@ -1,0 +1,71 @@
+import { NextResponse } from "next/server";
+import { authConstants, createSessionToken, hashPassword } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+type Body = {
+  email?: string;
+  username?: string;
+  password?: string;
+};
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as Body;
+    const email = normalizeEmail(body.email ?? "");
+    const username = (body.username ?? "").trim();
+    const password = body.password ?? "";
+
+    if (!email || !username || !password) {
+      return NextResponse.json({ error: "Email, username, and password are required." }, { status: 400 });
+    }
+    if (password.length < 8) {
+      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: { OR: [{ email }, { username }] },
+      select: { id: true, email: true, username: true }
+    });
+    if (existing) {
+      return NextResponse.json({ error: "Email or username already exists." }, { status: 409 });
+    }
+
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email,
+          username,
+          interestedIn: []
+        },
+        select: { id: true, email: true, username: true, createdAt: true }
+      });
+      await tx.authCredential.create({
+        data: { userId: created.id, passwordHash: hashPassword(password) }
+      });
+      return created;
+    });
+
+    // no session yet; this API currently focuses on account creation + admin visibility
+    const res = NextResponse.json({ user });
+    const token = createSessionToken({
+      uid: user.id,
+      email: user.email,
+      username: user.username
+    });
+    res.cookies.set(authConstants.SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: authConstants.SESSION_TTL_SEC,
+      path: "/"
+    });
+    return res;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Signup failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

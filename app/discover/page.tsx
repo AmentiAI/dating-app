@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { AdCard } from "@/components/app/AdCard";
+import { BottomNav } from "@/components/app/BottomNav";
 import { compatibility } from "@/lib/aiMatcher";
 import { useStore } from "@/lib/store";
 import type { Profile } from "@/lib/types";
@@ -24,6 +26,8 @@ export default function DiscoverPage() {
   const decisions = useStore((s) => s.decisions);
   const decide = useStore((s) => s.decide);
   const matches = useStore((s) => s.matches);
+  const dailyLikesUsed = useStore((s) => s.dailyLikesUsed);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const deck = useMemo(() => {
     return profiles.filter((p) => {
@@ -49,7 +53,7 @@ export default function DiscoverPage() {
 
   return (
     <div className="min-h-screen bg-bg pb-28 pt-4 text-ink aurora sm:pt-6">
-      <header className="mx-auto flex max-w-md items-center justify-between gap-2 px-4 sm:px-5">
+      <header className="mx-auto flex max-w-lg items-center justify-between gap-2 px-4 sm:px-5">
         <Link href="/" className="text-sm text-sub hover:text-ink">
           ← Home
         </Link>
@@ -67,14 +71,14 @@ export default function DiscoverPage() {
           </div>
         </div>
         <Link
-          href="/matches"
+          href="/messages"
           className="rounded-full border border-line/70 bg-white/80 px-3 py-1.5 text-xs font-semibold text-accent2 sm:text-sm"
         >
-          Matches ({matches.length})
+          Messages ({matches.length})
         </Link>
       </header>
 
-      <div className="mx-auto mt-5 max-w-md px-4 sm:mt-6 sm:px-5">
+      <div className="mx-auto mt-5 max-w-lg px-4 sm:mt-6 sm:px-5">
         <div className="mb-4 flex flex-wrap gap-2">
           <span className="chip text-[11px] text-sub">
             Age {me.filters.ageRange[0]}-{me.filters.ageRange[1]}
@@ -94,7 +98,16 @@ export default function DiscoverPage() {
               Race {me.filters.preferredRaces.join(", ")}
             </span>
           )}
+          {me.plan === "explorer" && (
+            <span className="chip text-[11px] text-sub">Likes left today {Math.max(0, 10 - dailyLikesUsed)}</span>
+          )}
         </div>
+        {me.plan === "explorer" && (
+          <div className="mb-4">
+            <AdCard compact />
+          </div>
+        )}
+        {notice && <p className="mb-3 rounded-xl border border-gold/50 bg-gold/10 px-3 py-2 text-sm text-ink">{notice}</p>}
         {!current ? (
           <div className="card p-8 text-center">
             <p className="font-display text-xl font-semibold">You&apos;re caught up</p>
@@ -116,7 +129,15 @@ export default function DiscoverPage() {
           <article className="card overflow-hidden">
             <div className="relative aspect-[4/5] w-full bg-surface2">
               {pickPhoto(current) ? (
-                <Image src={pickPhoto(current)!} alt="" fill className="object-cover" sizes="(max-width:768px) 100vw, 420px" priority />
+                <Image
+                  src={pickPhoto(current)!}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="(max-width:768px) 100vw, 420px"
+                  priority
+                  unoptimized
+                />
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-muted">No photo</div>
               )}
@@ -146,14 +167,14 @@ export default function DiscoverPage() {
                 <p className="mt-3 line-clamp-3 text-sm text-white/85">{current.headline}</p>
               </div>
             </div>
-            <div className="space-y-3 p-4 sm:p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Compatibility preview</p>
-              <ul className="space-y-2 text-sm text-sub">
+            <div className="space-y-4 p-5 sm:p-6">
+              <p className="text-sm font-medium uppercase tracking-wide text-muted">Compatibility preview</p>
+              <ul className="space-y-2.5 text-base text-sub">
                 <li className="flex gap-2">
                   <span className="text-accent3">●</span> Shared signals on intent & lifestyle
                 </li>
                 <li className="flex gap-2">
-                  <span className="text-accent2">●</span> Mutual interest overlap (mock)
+                  <span className="text-accent2">●</span> Mutual interest overlap
                 </li>
                 <li className="flex gap-2">
                   <span className="text-accent">●</span> Weight and race preferences respected in the feed filter
@@ -162,22 +183,31 @@ export default function DiscoverPage() {
               <div className="flex gap-2 pt-2 sm:gap-3">
                 <button
                   type="button"
-                  className="btn-ghost flex-1 py-3"
-                  onClick={() => decide(current.id, "pass")}
+                  className="btn-ghost flex-1 py-3.5"
+                  onClick={() => {
+                    setNotice(null);
+                    decide(current.id, "pass");
+                  }}
                 >
                   Pass
                 </button>
                 <button
                   type="button"
-                  className="flex-[1.2] rounded-full border border-white/10 bg-white/10 px-3 py-3 text-sm font-semibold text-white hover:bg-white/15"
-                  onClick={() => decide(current.id, "like")}
+                  className="flex-[1.2] rounded-full border border-white/10 bg-white/10 px-3 py-3.5 text-base font-semibold text-white hover:bg-white/15"
+                  onClick={() => {
+                    const res = decide(current.id, "like");
+                    setNotice(res.blocked ?? null);
+                  }}
                 >
                   Like
                 </button>
                 <button
                   type="button"
-                  className="pill-grad flex-1 px-3 py-3 text-sm"
-                  onClick={() => decide(current.id, "superlike")}
+                  className="pill-grad flex-1 px-3 py-3.5 text-base"
+                  onClick={() => {
+                    const res = decide(current.id, "superlike");
+                    setNotice(res.blocked ?? null);
+                  }}
                 >
                   Super
                 </button>
@@ -186,6 +216,7 @@ export default function DiscoverPage() {
           </article>
         )}
       </div>
+      <BottomNav />
     </div>
   );
 }

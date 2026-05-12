@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BottomNav } from "@/components/app/BottomNav";
 import { useStore } from "@/lib/store";
 import { MOCK_PROFILES } from "@/lib/mockData";
 
@@ -17,11 +18,10 @@ export default function MatchesPage() {
         <span className="w-10" />
       </header>
 
-      <div className="mx-auto mt-6 max-w-md space-y-3 sm:mt-8">
+      <div className="mx-auto mt-6 max-w-lg space-y-4 sm:mt-8">
         {matches.length === 0 ? (
-          <p className="rounded-3xl border border-line/60 bg-surface p-6 text-sm text-sub">
-            No matches yet. Like profiles in Discover — this prototype auto-matches when compatibility clears a
-            threshold.
+          <p className="rounded-3xl border border-line/60 bg-surface p-7 text-base text-sub">
+            No matches yet. Like profiles in Discover — matches appear when compatibility and mutual interest align.
           </p>
         ) : (
           matches.map((m) => {
@@ -30,13 +30,13 @@ export default function MatchesPage() {
               <Link
                 key={m.id}
                 href={`/chat/${m.id}`}
-                className="flex items-center justify-between rounded-3xl border border-line/60 bg-surface px-4 py-4 transition hover:border-accent2/40 active:scale-[0.99]"
+                className="flex items-center justify-between rounded-3xl border border-line/60 bg-surface px-5 py-5 transition hover:border-accent2/40 active:scale-[0.99]"
               >
                 <div>
-                  <p className="font-medium">{p?.name ?? "Match"}</p>
-                  <p className="text-xs text-muted">{m.compatibility}% compatibility</p>
+                  <p className="text-lg font-medium">{p?.name ?? "Match"}</p>
+                  <p className="text-sm text-muted">{m.compatibility}% compatibility</p>
                 </div>
-                <span className="text-xs font-semibold text-accent2">
+                <span className="text-sm font-semibold text-accent2">
                   {m.unread ? `${m.unread} new` : "Open"}
                 </span>
               </Link>
@@ -44,6 +44,7 @@ export default function MatchesPage() {
           })
         )}
       </div>
+      <BottomNav />
     </div>
   );
 }

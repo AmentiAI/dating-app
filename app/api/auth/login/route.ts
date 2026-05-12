@@ -1,0 +1,51 @@
+import { NextResponse } from "next/server";
+import { authConstants, createSessionToken, verifyPassword } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+type Body = { email?: string; password?: string };
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as Body;
+    const email = (body.email ?? "").trim().toLowerCase();
+    const password = body.password ?? "";
+
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        authCredential: { select: { passwordHash: true } }
+      }
+    });
+
+    if (!user?.authCredential || !verifyPassword(password, user.authCredential.passwordHash)) {
+      return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
+    }
+
+    const res = NextResponse.json({
+      user: { id: user.id, email: user.email, username: user.username }
+    });
+    const token = createSessionToken({
+      uid: user.id,
+      email: user.email,
+      username: user.username
+    });
+    res.cookies.set(authConstants.SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: authConstants.SESSION_TTL_SEC,
+      path: "/"
+    });
+    return res;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Login failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

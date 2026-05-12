@@ -49,8 +49,22 @@ model User {
   profileViewsReceived    ProfileView[]             @relation("ViewedViews")
   moderationActions       ModerationAuditLog[]      @relation("ModerationActor")
   moderationTargets       ModerationAuditLog[]      @relation("ModerationTarget")
+  authCredential          AuthCredential?
+  oneTimePurchases        OneTimePurchase[]
 
   @@map("users")
+}
+
+model AuthCredential {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("auth_credentials")
 }
 
 model Profile {
@@ -341,4 +355,17 @@ model ModerationAuditLog {
   @@index([targetUserId])
   @@index([createdAt(sort: Desc)])
   @@map("moderation_audit_log")
+}
+
+model OneTimePurchase {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  itemKey     String   @map("item_key")
+  amountCents Int      @map("amount_cents")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("one_time_purchases")
 }

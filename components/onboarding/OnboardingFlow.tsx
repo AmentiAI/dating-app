@@ -55,40 +55,6 @@ function formatFeetInches(totalInches: number): string {
   return `${ft}'${inch}"`;
 }
 
-function FloatingHearts() {
-  const hearts = [
-    { left: "10%", size: "text-lg", delay: 0, duration: 3.6 },
-    { left: "26%", size: "text-sm", delay: 0.7, duration: 4.2 },
-    { left: "42%", size: "text-base", delay: 1.1, duration: 3.9 },
-    { left: "58%", size: "text-lg", delay: 0.4, duration: 4.4 },
-    { left: "74%", size: "text-sm", delay: 1.6, duration: 4.8 },
-    { left: "88%", size: "text-base", delay: 2.1, duration: 4.6 }
-  ];
-
-  return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-2 h-24 overflow-hidden">
-      {hearts.map((heart) => (
-        <motion.span
-          key={`${heart.left}-${heart.delay}`}
-          aria-hidden
-          className={`absolute bottom-0 ${heart.size} text-accent/90 drop-shadow-[0_2px_8px_rgba(233,140,160,0.55)]`}
-          style={{ left: heart.left }}
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: -28, opacity: [0, 0.75, 0] }}
-          transition={{
-            duration: heart.duration,
-            delay: heart.delay,
-            repeat: Number.POSITIVE_INFINITY,
-            ease: "easeOut"
-          }}
-        >
-          ❤
-        </motion.span>
-      ))}
-    </div>
-  );
-}
-
 function intentToMeIntent(v: string): Intent {
   const map: Record<string, Intent> = {
     long: "long-term",
@@ -228,11 +194,11 @@ export function OnboardingFlow() {
         const fd = new FormData();
         fd.append("file", file);
         const res = await fetch("/api/uploads", { method: "POST", body: fd });
-        const json = (await res.json()) as { url?: string; error?: string };
-        if (!res.ok || !json.url) {
+        const json = (await res.json()) as { viewUrl?: string; url?: string; error?: string };
+        if (!res.ok || (!json.viewUrl && !json.url)) {
           throw new Error(json.error ?? "Image upload failed.");
         }
-        urls.push(json.url);
+        urls.push(json.viewUrl ?? json.url!);
       }
 
       setPhotos((prev) => [...prev, ...urls].slice(0, 6));
@@ -244,7 +210,7 @@ export function OnboardingFlow() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-lg flex-col bg-bg px-4 pb-36 pt-6 sm:px-5 sm:pb-28 sm:pt-10">
+    <div className="mx-auto flex min-h-screen max-w-xl flex-col bg-bg px-4 pb-36 pt-6 sm:px-5 sm:pb-28 sm:pt-10">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-accent2/15 to-transparent blur-2xl" />
       <header className="mb-4 flex items-center justify-between gap-3 sm:mb-6">
         <div className="flex items-center gap-2">
@@ -278,24 +244,24 @@ export function OnboardingFlow() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.22 }}
-          className="card relative border-line/60 p-4 pb-12 sm:p-6 sm:pb-12"
+          className="card relative border-line/60 p-5 pb-12 sm:p-7 sm:pb-12"
         >
           {step === 1 && (
             <div>
-              <h1 className="font-display text-2xl font-semibold leading-tight sm:text-3xl">
+              <h1 className="font-display text-3xl font-semibold leading-tight sm:text-4xl">
                 Find people who actually fit what you&apos;re looking for.
               </h1>
-              <p className="mt-5 text-base leading-relaxed text-sub sm:text-lg">
+              <p className="mt-5 text-lg leading-relaxed text-sub sm:text-xl">
                 Preference Plus helps you find genuine mutual fit. Your preferences stay private, while
                 compatibility remains clear, intentional, and easy to trust.
               </p>
-              <div className="mt-14 flex justify-center sm:mt-32">
+              <div className="mt-10 flex justify-center sm:mt-20">
                 <Image
                   src="/preference-plus-logo.png"
                   alt="Preference Plus logo"
                   width={460}
                   height={460}
-                  className="h-auto w-full max-w-[250px] rounded-2xl border border-line/70 bg-white/80 p-2 shadow-card sm:max-w-[460px]"
+                  className="h-auto w-full max-w-[290px] rounded-2xl border border-line/70 bg-white/80 p-2 shadow-card sm:max-w-[500px]"
                 />
               </div>
             </div>
@@ -303,15 +269,15 @@ export function OnboardingFlow() {
 
           {step === 2 && (
             <div>
-              <h2 className="font-display text-2xl font-semibold">Gender identity</h2>
-              <p className="mt-2 text-sm text-sub">Choose what feels most accurate.</p>
+              <h2 className="font-display text-3xl font-semibold">Gender identity</h2>
+              <p className="mt-2 text-base text-sub">Choose what feels most accurate.</p>
               <div className="mt-6 grid gap-3">
                 {["Male", "Female", "Non-binary", "Other"].map((g) => (
                   <button
                     key={g}
                     type="button"
                     onClick={() => setGender(g)}
-                    className={`rounded-2xl border px-4 py-4 text-left text-sm font-medium transition ${
+                    className={`rounded-2xl border px-5 py-5 text-left text-base font-medium transition ${
                       gender === g
                         ? "border-accent2/60 bg-accent2/15 text-ink"
                         : "border-line bg-surface hover:border-white/20"
@@ -326,15 +292,15 @@ export function OnboardingFlow() {
 
           {step === 3 && (
             <div>
-              <h2 className="font-display text-2xl font-semibold">Interested in</h2>
-              <p className="mt-2 text-sm text-sub">Who should we show you?</p>
+              <h2 className="font-display text-3xl font-semibold">Interested in</h2>
+              <p className="mt-2 text-base text-sub">Who should we show you?</p>
               <div className="mt-6 grid gap-3">
                 {["Men", "Women", "Everyone"].map((g) => (
                   <button
                     key={g}
                     type="button"
                     onClick={() => toggle(interested, g, setInterested)}
-                    className={`rounded-2xl border px-4 py-4 text-left text-sm font-medium transition ${
+                    className={`rounded-2xl border px-5 py-5 text-left text-base font-medium transition ${
                       interested.includes(g)
                         ? "border-accent/60 bg-accent/15 text-ink"
                         : "border-line bg-surface hover:border-white/20"
@@ -379,7 +345,7 @@ export function OnboardingFlow() {
           {step === 5 && (
             <div>
               <h2 className="font-display text-2xl font-semibold">Age preferences</h2>
-              <p className="mt-2 text-sm text-sub">Rough range is fine for the prototype.</p>
+              <p className="mt-2 text-sm text-sub">Set the age range you want to match with.</p>
               <div className="mt-8 space-y-8">
                 <label className="block text-sm text-sub">
                   Min age: <span className="font-semibold text-ink">{minAge}</span>
@@ -665,12 +631,12 @@ export function OnboardingFlow() {
               <label className="mt-6 block w-full rounded-2xl border border-dashed border-line/80 bg-surface px-4 py-4 text-center text-sm font-medium text-sub hover:border-accent2/60 hover:text-ink">
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
                   multiple
                   className="hidden"
                   onChange={(e) => void uploadSelected(e.target.files)}
                 />
-                {uploading ? "Uploading photos..." : "Select images from device"}
+                {uploading ? "Uploading photos..." : "Select photos from camera roll"}
               </label>
               <div className="mt-3 flex items-center justify-between gap-3">
                 <button
@@ -679,7 +645,7 @@ export function OnboardingFlow() {
                   className="btn-ghost text-xs"
                   disabled={uploading}
                 >
-                  Use demo photos
+                  Use starter photos
                 </button>
                 <p className="text-xs text-muted">{photos.length}/6 uploaded</p>
               </div>
@@ -691,7 +657,8 @@ export function OnboardingFlow() {
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {photos.map((u) => (
                   <div key={u} className="relative aspect-[3/4] overflow-hidden rounded-2xl ring-1 ring-white/10">
-                    <Image src={u} alt="" fill className="object-cover" sizes="200px" />
+                    {/* Use native img so private Blob download URLs render reliably */}
+                    <img src={u} alt="Uploaded profile" className="h-full w-full object-cover" />
                   </div>
                 ))}
               </div>
@@ -723,7 +690,6 @@ export function OnboardingFlow() {
               </label>
             </div>
           )}
-          <FloatingHearts />
         </motion.div>
       </AnimatePresence>
 
