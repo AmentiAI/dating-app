@@ -1,28 +1,63 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { AdCard } from "@/components/app/AdCard";
 import { BottomNav } from "@/components/app/BottomNav";
-import { MOCK_PROFILES } from "@/lib/mockData";
 import { useStore } from "@/lib/store";
+import type { Match } from "@/lib/types";
+
+function rowTitle(m: Match): string {
+  return m.otherName ?? "Conversation";
+}
 
 export default function MessagesPage() {
+  const router = useRouter();
   const matches = useStore((s) => s.matches);
   const chats = useStore((s) => s.chats);
   const me = useStore((s) => s.me);
+  const [sessionOk, setSessionOk] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/auth/me", { cache: "no-store" }).catch(() => null);
+      if (!res?.ok || cancelled) return;
+      const data = (await res.json()) as { user: { onboarded?: boolean } | null };
+      if (cancelled) return;
+      if (!data.user) {
+        router.replace("/login?next=/messages");
+        return;
+      }
+      if (data.user.onboarded !== true) {
+        router.replace("/onboarding");
+        return;
+      }
+      setSessionOk(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const rows = useMemo(
     () =>
       matches.map((m) => {
-        const profile = MOCK_PROFILES.find((p) => p.id === m.profileId);
         const thread = chats[m.id] ?? [];
         const last = thread[thread.length - 1];
-        const title = profile?.name ?? m.otherName ?? "Conversation";
-        return { matchId: m.id, profile, title, unread: m.unread, last };
+        return { matchId: m.id, title: rowTitle(m), unread: m.unread, last };
       }),
     [matches, chats]
   );
+
+  if (!sessionOk) {
+    return (
+      <main className="min-h-screen bg-bg px-4 pb-28 pt-8 text-ink">
+        <p className="mx-auto max-w-xl text-center text-sm text-sub">Loading…</p>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-bg px-4 pb-28 pt-4 text-ink sm:pt-5">
@@ -33,7 +68,12 @@ export default function MessagesPage() {
       <section className="mx-auto mt-4 max-w-xl space-y-3 sm:mt-6">
         {me.plan === "explorer" && <AdCard compact />}
         {rows.length === 0 ? (
-          <p className="card p-7 text-base text-sub">No conversations yet. Start matching in Discover.</p>
+          <div className="card p-7 text-center">
+            <p className="text-base text-sub">No conversations yet. When you match, chats show up here.</p>
+            <Link href="/discover" className="pill-grad mt-5 inline-flex w-full justify-center sm:w-auto sm:min-w-[200px]">
+              Go to Discover
+            </Link>
+          </div>
         ) : (
           rows.map((row) => (
             <Link

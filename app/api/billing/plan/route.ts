@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
 import { requireSession } from "@/lib/serverAuth";
 
 const allowedPlans = new Set(["explorer", "plus", "premium", "elite"]);
@@ -7,6 +8,9 @@ const allowedPlans = new Set(["explorer", "plus", "premium", "elite"]);
 export async function POST(req: Request) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = await requireMatchingEligibility(session.uid);
+  if (blocked) return blocked;
 
   try {
     const { plan } = (await req.json()) as { plan?: string };

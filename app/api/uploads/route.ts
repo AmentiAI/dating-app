@@ -1,11 +1,15 @@
 import { get, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/serverAuth";
 
 function getBlobToken() {
   return process.env.BLOB_READ_WRITE_TOKEN;
 }
 
 export async function POST(req: Request) {
+  const session = await requireSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
     const token = getBlobToken();
     if (!token) {
@@ -52,6 +56,9 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
+  const session = await requireSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const token = getBlobToken();
   if (!token) {
     return NextResponse.json(

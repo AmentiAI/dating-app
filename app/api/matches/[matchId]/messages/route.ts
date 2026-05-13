@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getOrCreateConversationForMatch } from "@/lib/matchConversation";
 import { isDbMatchId } from "@/lib/matchIds";
 import { prisma } from "@/lib/prisma";
+import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
 import { requireSession } from "@/lib/serverAuth";
 import type { ChatMessage } from "@/lib/types";
 
@@ -31,6 +32,9 @@ function mapRow(row: { id: string; senderId: string; message: string | null; cre
 export async function GET(_req: Request, context: { params: Promise<{ matchId: string }> }) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = await requireMatchingEligibility(session.uid);
+  if (blocked) return blocked;
 
   const { matchId } = await context.params;
   if (!isDbMatchId(matchId)) {
@@ -62,6 +66,9 @@ export async function GET(_req: Request, context: { params: Promise<{ matchId: s
 export async function POST(req: Request, context: { params: Promise<{ matchId: string }> }) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = await requireMatchingEligibility(session.uid);
+  if (blocked) return blocked;
 
   const { matchId } = await context.params;
   if (!isDbMatchId(matchId)) {

@@ -18,7 +18,9 @@ export function BottomNav() {
     <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-20 border-t border-line/70 bg-bg/95 px-2 py-2 backdrop-blur-xl">
       <div className="mx-auto grid w-full max-w-xl grid-cols-5 gap-1">
         {ITEMS.map((item) => {
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href ||
+            (item.href === "/messages" && pathname.startsWith("/chat"));
           return (
             <Link
               key={item.href}

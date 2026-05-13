@@ -15,6 +15,13 @@ export async function GET() {
     return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
   }
 
+  if (!me.onboardingCompletedAt) {
+    return NextResponse.json(
+      { error: "Finish onboarding to use this feature.", needsOnboarding: true },
+      { status: 403 }
+    );
+  }
+
   if (!me.preference) {
     await prisma.preference.create({
       data: {

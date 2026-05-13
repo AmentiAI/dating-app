@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useStore } from "@/lib/store";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,9 +22,23 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as {
+        error?: string;
+        user?: { onboarded?: boolean };
+      };
       if (!res.ok) throw new Error(json.error ?? "Login failed.");
-      router.push("/discover");
+      useStore.getState().resetForLogout();
+      const nextRaw = new URLSearchParams(window.location.search).get("next");
+      const next =
+        nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
+      const onboarded = json.user?.onboarded === true;
+      if (next) {
+        router.push(next);
+      } else if (onboarded) {
+        router.push("/discover");
+      } else {
+        router.push("/onboarding");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {

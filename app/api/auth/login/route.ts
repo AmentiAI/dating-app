@@ -20,6 +20,7 @@ export async function POST(req: Request) {
         id: true,
         email: true,
         username: true,
+        onboardingCompletedAt: true,
         authCredential: { select: { passwordHash: true } }
       }
     });
@@ -29,7 +30,12 @@ export async function POST(req: Request) {
     }
 
     const res = NextResponse.json({
-      user: { id: user.id, email: user.email, username: user.username }
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        onboarded: user.onboardingCompletedAt != null
+      }
     });
     const token = createSessionToken({
       uid: user.id,

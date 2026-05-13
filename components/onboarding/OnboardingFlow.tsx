@@ -4,9 +4,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toProxyPhotoUrl } from "@/lib/media";
-import type { Intent } from "@/lib/types";
+import type { Intent, Vibe } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
 const TOTAL = 11;
@@ -67,6 +67,41 @@ function intentToMeIntent(v: string): Intent {
   return map[v] ?? "long-term";
 }
 
+/** Map onboarding chips to server `preferredVibes` (invalid entries stripped by API). */
+function deriveVibes(social: string | null, personality: string | null): string[] {
+  const raw: string[] = [];
+  if (social === "Homebody") raw.push("homebody", "chill");
+  else if (social === "Outgoing") raw.push("adventurer", "party");
+  else if (social === "Balanced") raw.push("chill", "creative");
+  else raw.push("chill");
+  if (personality === "Analytical") raw.push("intellectual");
+  if (personality === "Bold") raw.push("ambitious");
+  if (personality === "Soft") raw.push("creative");
+  if (personality === "Chaotic good") raw.push("party", "adventurer");
+  return [...new Set(raw)];
+}
+
+type ProfileSaveResponse = {
+  userId: string;
+  name: string;
+  city: string;
+  bio: string;
+  intent: string;
+  interests: string[];
+  photoUrls: string[];
+  filters: {
+    ageRange: [number, number];
+    maxDistanceKm: number;
+    heightRange: [number, number];
+    weightRange: [number, number];
+    intents: string[];
+    vibes: Vibe[];
+    preferredRaces: string[];
+    verifiedOnly: boolean;
+  };
+  dealbreakers: string[];
+};
+
 export function OnboardingFlow() {
   const router = useRouter();
   const updateMe = useStore((s) => s.updateMe);
@@ -99,6 +134,21 @@ export function OnboardingFlow() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [bio, setBio] = useState("");
   const [weekend, setWeekend] = useState("");
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/auth/me", { cache: "no-store" }).catch(() => null);
+      if (!res?.ok || cancelled) return;
+      const data = (await res.json()) as { user: { onboarded?: boolean } | null };
+      if (data.user?.onboarded) router.replace("/discover");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const canNext = useMemo(() => {
     switch (step) {
@@ -149,32 +199,82 @@ export function OnboardingFlow() {
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   }
 
-  function finish() {
+  async function finish() {
     if (!intent) return;
-    updateMe({
-      onboarded: true,
-      intent: intentToMeIntent(intent),
-      bio: bio.trim() || me.bio,
-      dealbreakers,
-      interests: hobbies.length ? hobbies : me.interests,
-      filters: {
-        ...me.filters,
-        ageRange: [minAge, maxAge],
-        heightRange: [minH, maxH],
-        weightRange: [minWeight, maxWeight],
-        preferredRaces
-      },
-      prompts: [
-        { q: "My perfect weekend", a: weekend.trim() || "Low plans, high presence." },
-        { q: "What I value most", a: "Honesty, chemistry, and follow-through." },
-        ...me.prompts.slice(2)
-      ],
-      media:
-        photos.length > 0
-          ? photos.map((url) => ({ kind: "photo" as const, url: toProxyPhotoUrl(url) }))
-          : me.media
-    });
-    router.push("/discover");
+    setFinishing(true);
+    setFinishError(null);
+    const meIntent = intentToMeIntent(intent);
+    const vibes = deriveVibes(social, personality);
+
+    try {
+      const res = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: me.name,
+          bio: bio.trim(),
+          intent: meIntent,
+          interests: hobbies.length ? hobbies : me.interests,
+          photoUrls: photos.length ? photos : undefined,
+          gender,
+          interestedIn: interested.length ? interested : undefined,
+          completeOnboarding: true,
+          dealbreakers,
+          filters: {
+            ageRange: [Math.min(minAge, maxAge), Math.max(minAge, maxAge)],
+            heightRange: [Math.min(minH, maxH), Math.max(minH, maxH)],
+            weightRange: [Math.min(minWeight, maxWeight), Math.max(minWeight, maxWeight)],
+            preferredRaces,
+            maxDistanceKm: me.filters.maxDistanceKm,
+            intents: Array.from(new Set([meIntent, "open-to-anything"])),
+            vibes
+          }
+        })
+      });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!res.ok) {
+        const j = (await res.json()) as { error?: string };
+        setFinishError(j.error ?? "Could not save your profile.");
+        return;
+      }
+      const data = (await res.json()) as ProfileSaveResponse;
+      const curr = useStore.getState().me;
+      updateMe({
+        id: data.userId,
+        name: data.name,
+        city: data.city,
+        bio: data.bio,
+        intent: data.intent as Intent,
+        interests: data.interests,
+        dealbreakers: data.dealbreakers,
+        onboarded: true,
+        filters: {
+          ...curr.filters,
+          ageRange: data.filters.ageRange,
+          maxDistanceKm: data.filters.maxDistanceKm,
+          heightRange: data.filters.heightRange,
+          weightRange: data.filters.weightRange,
+          intents: data.filters.intents as Intent[],
+          vibes: data.filters.vibes as Vibe[],
+          preferredRaces: data.filters.preferredRaces,
+          verifiedOnly: data.filters.verifiedOnly
+        },
+        media: data.photoUrls.map((u) => ({ kind: "photo" as const, url: toProxyPhotoUrl(u) })),
+        prompts: [
+          { q: "My perfect weekend", a: weekend.trim() || "Low plans, high presence." },
+          { q: "What I value most", a: "Honesty, chemistry, and follow-through." },
+          ...curr.prompts.slice(2)
+        ]
+      });
+      router.push("/discover");
+    } catch {
+      setFinishError("Network error while saving.");
+    } finally {
+      setFinishing(false);
+    }
   }
 
   async function uploadSelected(files: FileList | null) {
@@ -681,6 +781,11 @@ export function OnboardingFlow() {
       </AnimatePresence>
 
       <div className="safe-bottom fixed bottom-0 left-0 right-0 border-t border-line/60 bg-bg/95 px-4 py-3 backdrop-blur-xl sm:px-5 sm:py-4">
+        {finishError && (
+          <div className="mx-auto mb-3 max-w-lg rounded-xl border border-red-300/50 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {finishError}
+          </div>
+        )}
         <div className="mx-auto flex max-w-lg gap-3">
           <button
             type="button"
@@ -700,8 +805,13 @@ export function OnboardingFlow() {
               Continue
             </button>
           ) : (
-            <button type="button" className="pill-grad flex-[2] py-3" disabled={!canNext} onClick={finish}>
-              Finish & enter feed
+            <button
+              type="button"
+              className="pill-grad flex-[2] py-3"
+              disabled={!canNext || finishing}
+              onClick={() => void finish()}
+            >
+              {finishing ? "Saving…" : "Finish & enter feed"}
             </button>
           )}
         </div>

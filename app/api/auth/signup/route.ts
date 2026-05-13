@@ -77,7 +77,6 @@ export async function POST(req: Request) {
       return created;
     });
 
-    // no session yet; this API currently focuses on account creation + admin visibility
     const res = NextResponse.json({ user });
     const token = createSessionToken({
       uid: user.id,

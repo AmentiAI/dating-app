@@ -2,30 +2,59 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { BottomNav } from "@/components/app/BottomNav";
-import { MOCK_PROFILES } from "@/lib/mockData";
 import { useStore } from "@/lib/store";
 import type { Match } from "@/lib/types";
 
 function displayName(m: Match): string {
-  const mock = MOCK_PROFILES.find((x) => x.id === m.profileId);
-  return mock?.name ?? m.otherName ?? "Match";
+  return m.otherName ?? "Match";
 }
 
 function displayPhoto(m: Match): string | null {
-  const mock = MOCK_PROFILES.find((x) => x.id === m.profileId);
-  const fromMock = mock?.media.find((x) => x.kind === "photo")?.url;
-  return fromMock ?? m.otherPhotoUrl ?? null;
+  return m.otherPhotoUrl ?? null;
 }
 
 export default function MatchesPage() {
+  const router = useRouter();
   const matches = useStore((s) => s.matches);
+  const [sessionOk, setSessionOk] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/auth/me", { cache: "no-store" }).catch(() => null);
+      if (!res?.ok || cancelled) return;
+      const data = (await res.json()) as { user: { onboarded?: boolean } | null };
+      if (cancelled) return;
+      if (!data.user) {
+        router.replace("/login?next=/matches");
+        return;
+      }
+      if (data.user.onboarded !== true) {
+        router.replace("/onboarding");
+        return;
+      }
+      setSessionOk(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const sorted = useMemo(
     () => [...matches].sort((a, b) => new Date(b.matchedAt).getTime() - new Date(a.matchedAt).getTime()),
     [matches]
   );
+
+  if (!sessionOk) {
+    return (
+      <div className="min-h-screen bg-bg px-4 pb-20 pt-8 text-ink">
+        <p className="mx-auto max-w-md text-center text-sm text-sub">Loading…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg px-4 pb-20 pt-5 text-ink sm:px-5 sm:pb-16 sm:pt-8">
@@ -39,9 +68,14 @@ export default function MatchesPage() {
 
       <div className="mx-auto mt-6 max-w-lg space-y-4 sm:mt-8">
         {sorted.length === 0 ? (
-          <p className="rounded-3xl border border-line/60 bg-surface p-7 text-base text-sub">
-            No matches yet. Like profiles in Discover — matches appear when compatibility and mutual interest align.
-          </p>
+          <div className="rounded-3xl border border-line/60 bg-surface p-7 text-center">
+            <p className="text-base text-sub">
+              No matches yet. When you and someone both like each other, they appear here.
+            </p>
+            <Link href="/discover" className="pill-grad mt-5 inline-flex w-full justify-center sm:w-auto sm:min-w-[200px]">
+              Open Discover
+            </Link>
+          </div>
         ) : (
           sorted.map((m) => {
             const name = displayName(m);

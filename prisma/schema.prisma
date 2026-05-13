@@ -24,6 +24,7 @@ model User {
   isBanned       Boolean   @default(false) @map("is_banned")
   lastActive     DateTime? @map("last_active") @db.Timestamptz(6)
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz(6)
 
   profile                 Profile?
   preference              Preference?
@@ -376,4 +377,13 @@ model OneTimePurchase {
 
   @@index([userId])
   @@map("one_time_purchases")
+}
+
+model WaitlistEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  source    String?  @default("landing")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("waitlist_entries")
 }

@@ -67,8 +67,8 @@ export default async function HomePage() {
               <Link href="/signup" className="pill-grad text-center">
                 Start onboarding
               </Link>
-              <Link href="/discover" className="btn-ghost text-center">
-                Preview the feed
+              <Link href="/login?next=/discover" className="btn-ghost text-center">
+                Sign in to discover
               </Link>
             </div>
             <dl className="mt-8 grid max-w-lg grid-cols-1 gap-4 text-left sm:mt-10 sm:grid-cols-3 sm:gap-5">

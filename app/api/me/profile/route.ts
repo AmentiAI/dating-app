@@ -142,6 +142,12 @@ type PatchBody = {
   intent?: string;
   interests?: string[];
   photoUrls?: string[];
+  /** Stored on users.gender */
+  gender?: string | null;
+  /** Stored on users.interested_in */
+  interestedIn?: string[];
+  /** When true, sets users.onboarding_completed_at (guided onboarding finish). */
+  completeOnboarding?: boolean;
   filters?: {
     ageRange?: [number, number];
     maxDistanceKm?: number;
@@ -191,8 +197,32 @@ export async function PATCH(req: Request) {
     ? body.dealbreakers.map((s) => String(s).trim()).filter(Boolean).slice(0, 20)
     : undefined;
 
+  const interestedIn = Array.isArray(body.interestedIn)
+    ? body.interestedIn.map((s) => String(s).trim()).filter(Boolean).slice(0, 20)
+    : undefined;
+
+  const gender =
+    body.gender === undefined
+      ? undefined
+      : body.gender === null
+        ? null
+        : String(body.gender).trim().slice(0, 80) || null;
+
+  const markOnboardingDone = body.completeOnboarding === true;
+
   try {
     await prisma.$transaction(async (tx) => {
+      if (gender !== undefined || interestedIn !== undefined || markOnboardingDone) {
+        await tx.user.update({
+          where: { id: session.uid },
+          data: {
+            ...(gender !== undefined ? { gender } : {}),
+            ...(interestedIn !== undefined ? { interestedIn } : {}),
+            ...(markOnboardingDone ? { onboardingCompletedAt: new Date() } : {})
+          }
+        });
+      }
+
       await tx.profile.update({
         where: { userId: session.uid },
         data: {

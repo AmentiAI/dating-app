@@ -1,6 +1,8 @@
 "use client";
 
 import { BottomNav } from "@/components/app/BottomNav";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import type { Match } from "@/lib/types";
 
@@ -64,9 +66,33 @@ const oneTime = [
 ];
 
 export default function PremiumPage() {
+  const router = useRouter();
   const me = useStore((s) => s.me);
   const setPlan = useStore((s) => s.setPlan);
   const addBoostCredits = useStore((s) => s.addBoostCredits);
+  const [sessionOk, setSessionOk] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/auth/me", { cache: "no-store" }).catch(() => null);
+      if (!res?.ok || cancelled) return;
+      const data = (await res.json()) as { user: { onboarded?: boolean } | null };
+      if (cancelled) return;
+      if (!data.user) {
+        router.replace("/login?next=/premium");
+        return;
+      }
+      if (data.user.onboarded !== true) {
+        router.replace("/onboarding");
+        return;
+      }
+      setSessionOk(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function choosePlan(plan: (typeof tiers)[number]["id"]) {
     const res = await fetch("/api/billing/plan", {
@@ -74,6 +100,22 @@ export default function PremiumPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ plan })
     }).catch(() => null);
+    if (res?.status === 401) {
+      router.replace("/login?next=/premium");
+      return;
+    }
+    if (res?.status === 403) {
+      let payload: { needsOnboarding?: boolean } = {};
+      try {
+        payload = (await res.json()) as { needsOnboarding?: boolean };
+      } catch {
+        /* ignore */
+      }
+      if (payload.needsOnboarding) {
+        router.replace("/onboarding");
+        return;
+      }
+    }
     if (!res?.ok) return;
     setPlan(plan);
     if (plan !== "explorer") {
@@ -88,11 +130,32 @@ export default function PremiumPage() {
   async function buyItem(label: string, price: string, boosts: number) {
     if (boosts > 0) addBoostCredits(boosts);
     const amountCents = Math.round(Number(price.replace(/[^0-9.]/g, "")) * 100);
-    await fetch("/api/billing/purchase", {
+    const res = await fetch("/api/billing/purchase", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ itemKey: label.toLowerCase().replace(/\s+/g, "_"), amountCents })
     }).catch(() => null);
+    if (res?.status === 401) {
+      router.replace("/login?next=/premium");
+      return;
+    }
+    if (res?.status === 403) {
+      let payload: { needsOnboarding?: boolean } = {};
+      try {
+        payload = (await res.json()) as { needsOnboarding?: boolean };
+      } catch {
+        /* ignore */
+      }
+      if (payload.needsOnboarding) router.replace("/onboarding");
+    }
+  }
+
+  if (!sessionOk) {
+    return (
+      <main className="min-h-screen bg-bg px-4 pb-28 pt-8 text-ink">
+        <p className="mx-auto max-w-xl text-center text-sm text-sub">Loading…</p>
+      </main>
+    );
   }
 
   return (

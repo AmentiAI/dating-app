@@ -4,6 +4,7 @@ import { loadMeForCompat } from "@/lib/loadMeForCompat";
 import { mapDbUserToProfile, type DbUserForDiscover } from "@/lib/mapDiscoverUser";
 import { getUserPlan } from "@/lib/planServer";
 import { prisma } from "@/lib/prisma";
+import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
 import { requireSession } from "@/lib/serverAuth";
 import type { Profile } from "@/lib/types";
 
@@ -18,6 +19,9 @@ function startOfUtcDay(): Date {
 export async function POST(req: Request) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = await requireMatchingEligibility(session.uid);
+  if (blocked) return blocked;
 
   let body: Body;
   try {

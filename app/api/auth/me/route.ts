@@ -14,6 +14,7 @@ export async function GET() {
       id: true,
       email: true,
       username: true,
+      onboardingCompletedAt: true,
       profile: {
         select: {
           city: true,
@@ -40,6 +41,7 @@ export async function GET() {
       email: user.email,
       username: user.username,
       plan,
+      onboarded: user.onboardingCompletedAt != null,
       profile: user.profile
         ? {
             city: user.profile.city,

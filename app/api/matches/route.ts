@@ -3,6 +3,7 @@ import { compatibility, suggestIcebreakers } from "@/lib/aiMatcher";
 import { loadMeForCompat } from "@/lib/loadMeForCompat";
 import { mapDbUserToProfile, type DbUserForDiscover } from "@/lib/mapDiscoverUser";
 import { prisma } from "@/lib/prisma";
+import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
 import { requireSession } from "@/lib/serverAuth";
 import type { Match, Profile } from "@/lib/types";
 
@@ -10,13 +11,8 @@ export async function GET() {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const meRow = await prisma.user.findUnique({
-    where: { id: session.uid },
-    select: { deletedAt: true, isBanned: true }
-  });
-  if (!meRow || meRow.deletedAt || meRow.isBanned) {
-    return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
-  }
+  const blocked = await requireMatchingEligibility(session.uid);
+  if (blocked) return blocked;
 
   const meModel = await loadMeForCompat(session.uid, prisma);
   if (!meModel) {

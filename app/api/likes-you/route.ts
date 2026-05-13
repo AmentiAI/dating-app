@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mapDbUserToProfile, type DbUserForDiscover } from "@/lib/mapDiscoverUser";
 import { getUserPlan } from "@/lib/planServer";
 import { prisma } from "@/lib/prisma";
+import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
 import { requireSession } from "@/lib/serverAuth";
 
 /**
@@ -12,13 +13,8 @@ export async function GET() {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const meRow = await prisma.user.findUnique({
-    where: { id: session.uid },
-    select: { deletedAt: true, isBanned: true }
-  });
-  if (!meRow || meRow.deletedAt || meRow.isBanned) {
-    return NextResponse.json({ error: "Account unavailable." }, { status: 403 });
-  }
+  const blocked = await requireMatchingEligibility(session.uid);
+  if (blocked) return blocked;
 
   const plan = await getUserPlan(session.uid);
   if (plan === "explorer") {

@@ -65,7 +65,7 @@ export async function loadMeForCompat(
     boostCredits: 0,
     verified: u.isVerified,
     dealbreakers: pr.dealbreakers ?? [],
-    onboarded: true
+    onboarded: u.onboardingCompletedAt != null
   };
   const plan = await getUserPlan(userId);
   me.plan = plan;

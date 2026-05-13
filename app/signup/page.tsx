@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useStore } from "@/lib/store";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -31,6 +32,7 @@ export default function SignupPage() {
       if (!res.ok) {
         throw new Error(json.error ?? "Signup failed.");
       }
+      useStore.getState().resetForLogout();
       router.push("/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed.");

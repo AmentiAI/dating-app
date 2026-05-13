@@ -3,9 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BottomNav } from "@/components/app/BottomNav";
-import { MOCK_PROFILES } from "@/lib/mockData";
 import { useStore } from "@/lib/store";
 import type { Profile } from "@/lib/types";
 
@@ -16,20 +15,18 @@ function pickPhoto(p: Profile): string | null {
 
 export default function LikesPage() {
   const me = useStore((s) => s.me);
-  const likedYou = useStore((s) => s.likedYou);
-  const likeBack = useStore((s) => s.likeBack);
   const router = useRouter();
   const premiumUnlocked = me.plan !== "explorer";
 
-  const [likesSource, setLikesSource] = useState<"loading" | "db" | "mock">(() =>
-    useStore.getState().me.plan !== "explorer" ? "loading" : "mock"
+  const [likesSource, setLikesSource] = useState<"loading" | "db" | "unauth" | "forbidden">(() =>
+    useStore.getState().me.plan !== "explorer" ? "loading" : "forbidden"
   );
   const [dbLikers, setDbLikers] = useState<Profile[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!premiumUnlocked) {
-      setLikesSource("mock");
+      setLikesSource("forbidden");
       return;
     }
     setLikesSource("loading");
@@ -37,18 +34,38 @@ export default function LikesPage() {
     (async () => {
       try {
         const authRes = await fetch("/api/auth/me", { cache: "no-store", signal: ac.signal });
-        const authJson = (await authRes.json()) as { user?: { id: string } | null };
+        const authJson = (await authRes.json()) as { user?: { id: string; onboarded?: boolean } | null };
         if (!authJson?.user) {
-          if (!ac.signal.aborted) setLikesSource("mock");
+          if (!ac.signal.aborted) setLikesSource("unauth");
+          return;
+        }
+        if (authJson.user.onboarded !== true) {
+          if (!ac.signal.aborted) router.replace("/onboarding");
           return;
         }
         const res = await fetch("/api/likes-you", { cache: "no-store", signal: ac.signal });
-        if (res.status === 403 || res.status === 401) {
-          if (!ac.signal.aborted) setLikesSource("mock");
+        if (res.status === 401) {
+          if (!ac.signal.aborted) setLikesSource("unauth");
+          return;
+        }
+        if (res.status === 403) {
+          let payload: { needsOnboarding?: boolean } = {};
+          try {
+            payload = (await res.json()) as { needsOnboarding?: boolean };
+          } catch {
+            /* ignore */
+          }
+          if (payload.needsOnboarding && !ac.signal.aborted) {
+            router.replace("/onboarding");
+            return;
+          }
+          if (!ac.signal.aborted) setLikesSource("forbidden");
           return;
         }
         if (!res.ok) {
-          if (!ac.signal.aborted) setLikesSource("mock");
+          if (!ac.signal.aborted) setNotice("Could not load likes.");
+          if (!ac.signal.aborted) setDbLikers([]);
+          if (!ac.signal.aborted) setLikesSource("db");
           return;
         }
         const data = (await res.json()) as { profiles?: Profile[] };
@@ -56,18 +73,15 @@ export default function LikesPage() {
         setDbLikers(data.profiles ?? []);
         setLikesSource("db");
       } catch {
-        if (!ac.signal.aborted) setLikesSource("mock");
+        if (!ac.signal.aborted) {
+          setNotice("Could not load likes.");
+          setDbLikers([]);
+          setLikesSource("db");
+        }
       }
     })();
     return () => ac.abort();
-  }, [premiumUnlocked]);
-
-  const mockProfiles = useMemo(
-    () => likedYou.map((id) => MOCK_PROFILES.find((p) => p.id === id)).filter(Boolean) as Profile[],
-    [likedYou]
-  );
-
-  const profiles = likesSource === "db" ? dbLikers : mockProfiles;
+  }, [premiumUnlocked, router]);
 
   const likeBackRemote = useCallback(
     async (p: Profile): Promise<{ matchId?: string; error?: string }> => {
@@ -83,11 +97,16 @@ export default function LikesPage() {
         matched?: boolean;
         matchId?: string;
         compatibility?: number;
+        needsOnboarding?: boolean;
       } = {};
       try {
         json = (await res.json()) as typeof json;
       } catch {
         return { error: "Request failed." };
+      }
+      if (res.status === 403 && json.needsOnboarding) {
+        router.replace("/onboarding");
+        return { error: "Finish onboarding first." };
       }
       if (!res.ok) {
         return { error: typeof json.error === "string" ? json.error : "Could not like back." };
@@ -112,7 +131,7 @@ export default function LikesPage() {
       }
       return { matchId: json.matchId };
     },
-    [me.plan]
+    [me.plan, router]
   );
 
   return (
@@ -124,7 +143,17 @@ export default function LikesPage() {
         </Link>
       </header>
 
-      {!premiumUnlocked ? (
+      {likesSource === "unauth" && (
+        <section className="card mx-auto mt-6 max-w-xl p-7 text-center">
+          <p className="text-lg font-semibold">Log in to see likes</p>
+          <p className="mt-2 text-base text-sub">Sign in with a Plus or higher plan to view who liked you.</p>
+          <Link href="/login?next=/likes" className="pill-grad mt-5 inline-flex">
+            Log in
+          </Link>
+        </section>
+      )}
+
+      {likesSource === "forbidden" && (
         <section className="card mx-auto mt-6 max-w-xl p-7">
           <p className="text-lg font-semibold">Unlock who liked you</p>
           <p className="mt-2 text-base text-sub">
@@ -134,19 +163,26 @@ export default function LikesPage() {
             View plans
           </Link>
         </section>
-      ) : (
+      )}
+
+      {likesSource !== "unauth" && likesSource !== "forbidden" && (
         <section className="mx-auto mt-6 max-w-xl space-y-3">
           {likesSource === "loading" && (
             <div className="card p-8 text-center text-sm text-sub">Loading people who liked you…</div>
           )}
-          {likesSource !== "loading" && notice && (
+          {likesSource === "db" && notice && (
             <p className="rounded-xl border border-gold/50 bg-gold/10 px-3 py-2 text-sm text-ink">{notice}</p>
           )}
-          {likesSource !== "loading" && profiles.length === 0 ? (
-            <p className="card p-7 text-base text-sub">No new likes yet.</p>
+          {likesSource === "db" && dbLikers.length === 0 ? (
+            <div className="card p-7 text-center">
+              <p className="text-base text-sub">No new likes yet. Keep swiping in Discover — likes show up here.</p>
+              <Link href="/discover" className="pill-grad mt-5 inline-flex w-full justify-center sm:w-auto sm:min-w-[200px]">
+                Go to Discover
+              </Link>
+            </div>
           ) : null}
-          {likesSource !== "loading" &&
-            profiles.map((p) => (
+          {likesSource === "db" &&
+            dbLikers.map((p) => (
               <article key={p.id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                 <div className="flex min-w-0 flex-1 gap-3">
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface2 sm:h-20 sm:w-20">
@@ -175,12 +211,8 @@ export default function LikesPage() {
                     type="button"
                     className="pill-grad px-4 py-2.5 text-sm"
                     onClick={async () => {
-                      if (likesSource === "db") {
-                        const r = await likeBackRemote(p);
-                        if (r.error) setNotice(r.error);
-                      } else {
-                        likeBack(p.id);
-                      }
+                      const r = await likeBackRemote(p);
+                      if (r.error) setNotice(r.error);
                     }}
                   >
                     Like back
@@ -189,17 +221,12 @@ export default function LikesPage() {
                     type="button"
                     className="btn-ghost px-4 py-2.5 text-sm"
                     onClick={async () => {
-                      if (likesSource === "db") {
-                        const r = await likeBackRemote(p);
-                        if (r.error) {
-                          setNotice(r.error);
-                          return;
-                        }
-                        if (r.matchId) router.push(`/chat/${r.matchId}`);
-                      } else {
-                        const { matchId } = likeBack(p.id);
-                        if (matchId) router.push(`/chat/${matchId}`);
+                      const r = await likeBackRemote(p);
+                      if (r.error) {
+                        setNotice(r.error);
+                        return;
                       }
+                      if (r.matchId) router.push(`/chat/${r.matchId}`);
                     }}
                   >
                     Message

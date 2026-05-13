@@ -637,6 +637,7 @@ export default function ProfilePage() {
           className="btn-ghost w-full"
           onClick={async () => {
             await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+            useStore.getState().resetForLogout();
             router.push("/login");
           }}
         >
