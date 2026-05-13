@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { authConstants, createSessionToken, verifyPassword } from "@/lib/auth";
+import { clientKeyFromHeaders } from "@/lib/clientKey";
 import { prisma } from "@/lib/prisma";
+import { slidingWindowAllow } from "@/lib/slidingRateLimit";
 
 type Body = { email?: string; password?: string };
 
 export async function POST(req: Request) {
+  const h = await headers();
+  const ip = clientKeyFromHeaders(h);
+  if (!slidingWindowAllow(`login:${ip}`, 25, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many attempts. Try again in a few minutes." }, { status: 429 });
+  }
+
   try {
     const body = (await req.json()) as Body;
     const email = (body.email ?? "").trim().toLowerCase();

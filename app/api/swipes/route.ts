@@ -47,6 +47,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Profile not available." }, { status: 404 });
   }
 
+  const anyBlock = await prisma.block.findFirst({
+    where: {
+      OR: [
+        { blockerId: session.uid, blockedId: swipedId },
+        { blockerId: swipedId, blockedId: session.uid }
+      ]
+    },
+    select: { blockerId: true }
+  });
+  if (anyBlock) {
+    return NextResponse.json({ error: "You cannot interact with this profile." }, { status: 403 });
+  }
+
   const existing = await prisma.swipe.findFirst({
     where: { swiperId: session.uid, swipedId }
   });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mapDbUserToProfile, passesPreferenceFilters, type DbUserForDiscover } from "@/lib/mapDiscoverUser";
+import { getBlockedUserIds } from "@/lib/blockedUserIds";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/serverAuth";
 
@@ -50,7 +51,8 @@ export async function GET() {
     where: { swiperId: session.uid },
     select: { swipedId: true }
   });
-  const excludeIds = [session.uid, ...swiped.map((s) => s.swipedId)];
+  const blocked = await getBlockedUserIds(session.uid);
+  const excludeIds = [session.uid, ...swiped.map((s) => s.swipedId), ...blocked];
 
   const rows = await prisma.user.findMany({
     where: {

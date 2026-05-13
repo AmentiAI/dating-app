@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { compatibility, suggestIcebreakers } from "@/lib/aiMatcher";
 import { loadMeForCompat } from "@/lib/loadMeForCompat";
 import { mapDbUserToProfile, type DbUserForDiscover } from "@/lib/mapDiscoverUser";
+import { getBlockedUserIds } from "@/lib/blockedUserIds";
 import { prisma } from "@/lib/prisma";
 import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
 import { requireSession } from "@/lib/serverAuth";
@@ -11,8 +12,8 @@ export async function GET() {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const blocked = await requireMatchingEligibility(session.uid);
-  if (blocked) return blocked;
+  const eligibility = await requireMatchingEligibility(session.uid);
+  if (eligibility) return eligibility;
 
   const meModel = await loadMeForCompat(session.uid, prisma);
   if (!meModel) {
@@ -48,9 +49,12 @@ export async function GET() {
   });
   const byId = new Map(users.map((u) => [u.id, u]));
 
+  const blockedIds = await getBlockedUserIds(session.uid);
+
   const out: Match[] = [];
   for (const row of rows) {
     const otherId = row.user1Id === session.uid ? row.user2Id : row.user1Id;
+    if (blockedIds.has(otherId)) continue;
     const u = byId.get(otherId);
     if (!u?.profile) continue;
 

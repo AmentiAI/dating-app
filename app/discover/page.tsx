@@ -148,6 +148,54 @@ export default function DiscoverPage() {
     [current, status, me.plan, router]
   );
 
+  const blockCurrent = useCallback(async () => {
+    if (!current) return;
+    if (
+      !window.confirm(
+        `Block ${current.name}? They will disappear from Discover and you will not match or message each other.`
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/users/${current.id}/block`, { method: "POST" });
+    if (res.ok) {
+      setDeck((prev) => prev.filter((p) => p.id !== current.id));
+      setNotice(null);
+      return;
+    }
+    let msg = "Could not block this profile.";
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (typeof j.error === "string") msg = j.error;
+    } catch {
+      /* ignore */
+    }
+    setNotice(msg);
+  }, [current]);
+
+  const reportCurrent = useCallback(async () => {
+    if (!current) return;
+    const reason = window.prompt("What should we know? (short reason)", "Safety concern");
+    if (reason === null || !reason.trim()) return;
+    const res = await fetch(`/api/users/${current.id}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason.trim() })
+    });
+    if (res.ok) {
+      window.alert("Thanks — we logged your report.");
+      return;
+    }
+    let msg = "Report could not be sent.";
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (typeof j.error === "string") msg = j.error;
+    } catch {
+      /* ignore */
+    }
+    setNotice(msg);
+  }, [current]);
+
   const refetchDiscover = useCallback(async () => {
     setNotice(null);
     const authRes = await fetch("/api/auth/me", { cache: "no-store" });
@@ -348,6 +396,14 @@ export default function DiscoverPage() {
                     </button>
                     <button type="button" className="pill-grad flex-1 px-3 py-3.5 text-base" onClick={() => void swipeDb("superlike")}>
                       Super
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 border-t border-line/60 pt-4">
+                    <button type="button" className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => void blockCurrent()}>
+                      Block
+                    </button>
+                    <button type="button" className="btn-ghost flex-1 py-2.5 text-sm" onClick={() => void reportCurrent()}>
+                      Report
                     </button>
                   </div>
                 </div>

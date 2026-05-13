@@ -49,10 +49,19 @@ export default async function AdminPage() {
         </header>
 
         <section className="mb-10">
-          <h2 className="mb-3 font-display text-xl font-semibold">
-            Landing waitlist
-            <span className="ml-2 text-base font-normal text-muted">({waitlistTotal} total)</span>
-          </h2>
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <h2 className="font-display text-xl font-semibold">
+              Landing waitlist
+              <span className="ml-2 text-base font-normal text-muted">({waitlistTotal} total)</span>
+            </h2>
+            <a
+              href="/api/admin/waitlist-export"
+              className="btn-ghost w-fit text-sm"
+              download
+            >
+              Download CSV
+            </a>
+          </div>
           <div className="card overflow-hidden">
             <div className="hidden grid-cols-[1.2fr_0.6fr_0.9fr] gap-3 border-b border-line/60 bg-surface2/70 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted sm:grid">
               <span>Email</span>

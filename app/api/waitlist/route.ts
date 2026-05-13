@@ -1,24 +1,14 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { clientKeyFromHeaders } from "@/lib/clientKey";
 import { prisma } from "@/lib/prisma";
-import { allowWaitlistRequest } from "@/lib/waitlistRateLimit";
+import { slidingWindowAllow } from "@/lib/slidingRateLimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function clientKeyFromHeaders(h: Headers): string {
-  const fwd = h.get("x-forwarded-for");
-  if (fwd) {
-    const first = fwd.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = h.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
-  return "unknown";
-}
-
 export async function POST(req: Request) {
   const h = await headers();
-  if (!allowWaitlistRequest(clientKeyFromHeaders(h))) {
+  if (!slidingWindowAllow(`waitlist:${clientKeyFromHeaders(h)}`, 10, 60_000)) {
     return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   }
 

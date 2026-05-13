@@ -52,6 +52,7 @@ model User {
   moderationTargets       ModerationAuditLog[]      @relation("ModerationTarget")
   authCredential          AuthCredential?
   oneTimePurchases        OneTimePurchase[]
+  passwordResetTokens     PasswordResetToken[]
 
   @@map("users")
 }
@@ -66,6 +67,21 @@ model AuthCredential {
 
   @@index([userId])
   @@map("auth_credentials")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model Profile {

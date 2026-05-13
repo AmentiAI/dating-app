@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mapDbUserToProfile, type DbUserForDiscover } from "@/lib/mapDiscoverUser";
+import { getBlockedUserIds } from "@/lib/blockedUserIds";
 import { getUserPlan } from "@/lib/planServer";
 import { prisma } from "@/lib/prisma";
 import { requireMatchingEligibility } from "@/lib/requireMatchingEligibility";
@@ -13,8 +14,8 @@ export async function GET() {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const blocked = await requireMatchingEligibility(session.uid);
-  if (blocked) return blocked;
+  const eligibility = await requireMatchingEligibility(session.uid);
+  if (eligibility) return eligibility;
 
   const plan = await getUserPlan(session.uid);
   if (plan === "explorer") {
@@ -42,6 +43,8 @@ export async function GET() {
     matchedIds.add(m.user1Id === session.uid ? m.user2Id : m.user1Id);
   }
 
+  const blockedIds = await getBlockedUserIds(session.uid);
+
   const incoming = await prisma.swipe.findMany({
     where: {
       swipedId: session.uid,
@@ -58,6 +61,7 @@ export async function GET() {
     if (id === session.uid) continue;
     if (iSwipedSet.has(id)) continue;
     if (matchedIds.has(id)) continue;
+    if (blockedIds.has(id)) continue;
     if (seen.has(id)) continue;
     seen.add(id);
     likerIdsOrdered.push(id);

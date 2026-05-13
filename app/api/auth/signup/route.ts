@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { authConstants, createSessionToken, hashPassword } from "@/lib/auth";
+import { clientKeyFromHeaders } from "@/lib/clientKey";
 import { prisma } from "@/lib/prisma";
+import { slidingWindowAllow } from "@/lib/slidingRateLimit";
 
 type Body = {
   email?: string;
@@ -13,6 +16,12 @@ function normalizeEmail(email: string): string {
 }
 
 export async function POST(req: Request) {
+  const h = await headers();
+  const ip = clientKeyFromHeaders(h);
+  if (!slidingWindowAllow(`signup:${ip}`, 6, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many signups from this network. Try again later." }, { status: 429 });
+  }
+
   try {
     const body = (await req.json()) as Body;
     const email = normalizeEmail(body.email ?? "");
