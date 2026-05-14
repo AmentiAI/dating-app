@@ -16,3 +16,21 @@ export async function getBlockedUserIds(
   }
   return out;
 }
+
+/** True if either user has blocked the other (symmetric). */
+export async function isBlockBetween(
+  a: string,
+  b: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<boolean> {
+  const row = await db.block.findFirst({
+    where: {
+      OR: [
+        { blockerId: a, blockedId: b },
+        { blockerId: b, blockedId: a }
+      ]
+    },
+    select: { blockerId: true }
+  });
+  return !!row;
+}

@@ -29,6 +29,8 @@ export default function DiscoverPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "auth">("loading");
   const [deck, setDeck] = useState<Profile[]>([]);
+  const [discoverCursor, setDiscoverCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -72,6 +74,7 @@ export default function DiscoverPage() {
           if (!ac.signal.aborted) {
             setNotice("Could not load people to discover.");
             setDeck([]);
+            setDiscoverCursor(null);
             setStatus("ready");
           }
           return;
@@ -80,18 +83,21 @@ export default function DiscoverPage() {
           if (!ac.signal.aborted) {
             setNotice("Could not load people to discover.");
             setDeck([]);
+            setDiscoverCursor(null);
             setStatus("ready");
           }
           return;
         }
-        const data = (await res.json()) as { profiles?: Profile[] };
+        const data = (await res.json()) as { profiles?: Profile[]; nextCursor?: string | null };
         if (ac.signal.aborted) return;
         setDeck(data.profiles ?? []);
+        setDiscoverCursor(data.nextCursor ?? null);
         setStatus("ready");
       } catch {
         if (!ac.signal.aborted) {
           setNotice("Could not load discover.");
           setDeck([]);
+          setDiscoverCursor(null);
           setStatus("ready");
         }
       }
@@ -159,6 +165,7 @@ export default function DiscoverPage() {
     }
     const res = await fetch(`/api/users/${current.id}/block`, { method: "POST" });
     if (res.ok) {
+      useStore.getState().removeMatchByProfileId(current.id);
       setDeck((prev) => prev.filter((p) => p.id !== current.id));
       setNotice(null);
       return;
@@ -231,9 +238,51 @@ export default function DiscoverPage() {
       setNotice("Could not refresh deck.");
       return;
     }
-    const data = (await res.json()) as { profiles?: Profile[] };
+    const data = (await res.json()) as { profiles?: Profile[]; nextCursor?: string | null };
     setDeck(data.profiles ?? []);
+    setDiscoverCursor(data.nextCursor ?? null);
   }, [router]);
+
+  const loadMoreDiscover = useCallback(async () => {
+    if (!discoverCursor) return;
+    setLoadingMore(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/discover?cursor=${encodeURIComponent(discoverCursor)}`, {
+        cache: "no-store"
+      });
+      if (res.status === 401) {
+        router.push("/login?next=/discover");
+        return;
+      }
+      if (res.status === 403) {
+        let payload: { needsOnboarding?: boolean } = {};
+        try {
+          payload = (await res.json()) as { needsOnboarding?: boolean };
+        } catch {
+          /* ignore */
+        }
+        if (payload.needsOnboarding) router.replace("/onboarding");
+        else setNotice("Could not load more profiles.");
+        return;
+      }
+      if (!res.ok) {
+        setNotice("Could not load more profiles.");
+        return;
+      }
+      const data = (await res.json()) as { profiles?: Profile[]; nextCursor?: string | null };
+      const more = data.profiles ?? [];
+      setDeck((prev) => [...prev, ...more]);
+      setDiscoverCursor(data.nextCursor ?? null);
+      if (more.length === 0) {
+        setNotice("No more people in your filters right now.");
+      }
+    } catch {
+      setNotice("Could not load more profiles.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [discoverCursor, router]);
 
   return (
     <div className="min-h-screen bg-bg pb-28 pt-4 text-ink aurora sm:pt-6">
@@ -316,12 +365,26 @@ export default function DiscoverPage() {
               <div className="card p-8 text-center">
                 <p className="font-display text-xl font-semibold">You&apos;re caught up</p>
                 <p className="mt-2 text-sm text-sub">
-                  Check back later for new people, or refresh. Widen filters in your profile if the pool feels small.
+                  Check back later for new people, refresh the deck, or load the next batch. Add GPS in{" "}
+                  <Link href="/profile" className="font-semibold text-accent2 underline-offset-2 hover:underline">
+                    Profile
+                  </Link>{" "}
+                  for truer distances. Widen filters if the pool feels small.
                 </p>
                 <div className="mt-6 flex flex-col gap-3">
                   <button type="button" className="pill-grad" onClick={() => void refetchDiscover()}>
                     Refresh deck
                   </button>
+                  {discoverCursor && (
+                    <button
+                      type="button"
+                      className="btn-ghost text-center text-sm"
+                      disabled={loadingMore}
+                      onClick={() => void loadMoreDiscover()}
+                    >
+                      {loadingMore ? "Loading…" : "Load more people"}
+                    </button>
+                  )}
                   <Link href="/profile" className="btn-ghost text-center text-sm">
                     Edit profile & filters
                   </Link>
@@ -352,6 +415,9 @@ export default function DiscoverPage() {
                           {current.name}, {current.age}
                         </p>
                         <p className="text-sm text-white/80">{current.city}</p>
+                        <p className="text-xs text-white/60">
+                          ~{Math.max(1, Math.round(current.distanceKm))} km away
+                        </p>
                       </div>
                       <div className="rounded-2xl border border-white/15 bg-black/40 px-3 py-2 text-right backdrop-blur-md">
                         <p className="text-[10px] uppercase tracking-wide text-white/70">Compatibility</p>

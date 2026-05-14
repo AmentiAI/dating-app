@@ -18,16 +18,19 @@ export default function ChatPage() {
   const markMatchRead = useStore((s) => s.markMatchRead);
   const hydrateChatFromServer = useStore((s) => s.hydrateChatFromServer);
   const mergeMatchesFromApi = useStore((s) => s.mergeMatchesFromApi);
+  const removeMatchByMatchId = useStore((s) => s.removeMatchByMatchId);
   const me = useStore((s) => s.me);
 
   const [sessionReady, setSessionReady] = useState(false);
   const [listsReady, setListsReady] = useState(false);
+  const [conversationClosed, setConversationClosed] = useState(false);
   const matchListFetchFor = useRef<string | null>(null);
 
   useEffect(() => {
     setListsReady(false);
     matchListFetchFor.current = null;
     setSendError(null);
+    setConversationClosed(false);
   }, [matchId]);
 
   useEffect(() => {
@@ -122,13 +125,30 @@ export default function ChatPage() {
         signal: ac.signal
       });
       if (res.status === 403) {
-        let payload: { needsOnboarding?: boolean } = {};
+        let payload: { needsOnboarding?: boolean; code?: string } = {};
         try {
-          payload = (await res.json()) as { needsOnboarding?: boolean };
+          payload = (await res.json()) as { needsOnboarding?: boolean; code?: string };
         } catch {
           /* ignore */
         }
-        if (payload.needsOnboarding && !ac.signal.aborted) router.replace("/onboarding");
+        if (!ac.signal.aborted) {
+          if (payload.needsOnboarding) {
+            router.replace("/onboarding");
+            return;
+          }
+          if (payload.code === "blocked") {
+            removeMatchByMatchId(matchId);
+            setConversationClosed(true);
+            return;
+          }
+        }
+        return;
+      }
+      if (res.status === 404) {
+        if (!ac.signal.aborted) {
+          removeMatchByMatchId(matchId);
+          setConversationClosed(true);
+        }
         return;
       }
       if (!res.ok) return;
@@ -144,13 +164,30 @@ export default function ChatPage() {
       hydrateChatFromServer(matchId, messages);
     })();
     return () => ac.abort();
-  }, [match, matchId, hydrateChatFromServer, sessionReady, router]);
+  }, [match, matchId, hydrateChatFromServer, sessionReady, router, removeMatchByMatchId]);
 
   if (!sessionReady || !listsReady) {
     return (
       <div className="flex min-h-screen flex-col bg-bg pb-28 text-ink">
         <div className="flex flex-1 items-center justify-center px-5 py-16">
           <p className="text-sm text-sub">Loading…</p>
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
+  if (conversationClosed) {
+    return (
+      <div className="flex min-h-screen flex-col bg-bg pb-28 text-ink">
+        <div className="flex flex-1 flex-col justify-center px-5 py-16">
+          <p className="font-display text-lg font-semibold">Conversation unavailable</p>
+          <p className="mt-2 text-sm text-sub">
+            This thread is closed, often because someone blocked the other or the match was removed.
+          </p>
+          <Link href="/messages" className="mt-5 inline-block text-sm font-semibold text-accent2">
+            ← Back to messages
+          </Link>
         </div>
         <BottomNav />
       </div>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isBlockBetween } from "@/lib/blockedUserIds";
 import { getOrCreateConversationForMatch } from "@/lib/matchConversation";
 import { isDbMatchId } from "@/lib/matchIds";
 import { prisma } from "@/lib/prisma";
@@ -8,16 +9,24 @@ import type { ChatMessage } from "@/lib/types";
 
 const MAX_LEN = 4000;
 
-async function assertMatchMember(matchId: string, uid: string): Promise<boolean> {
-  const m = await prisma.match.findFirst({
-    where: {
-      id: matchId,
-      isActive: true,
-      OR: [{ user1Id: uid }, { user2Id: uid }]
-    },
-    select: { id: true }
+/** Membership + block + active check. Returns an error response or null if OK to proceed. */
+async function assertMessagesGate(matchId: string, uid: string): Promise<NextResponse | null> {
+  const row = await prisma.match.findFirst({
+    where: { id: matchId, OR: [{ user1Id: uid }, { user2Id: uid }] },
+    select: { user1Id: true, user2Id: true, isActive: true }
   });
-  return !!m;
+  if (!row) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const otherId = row.user1Id === uid ? row.user2Id : row.user1Id;
+  if (await isBlockBetween(uid, otherId)) return blockedConversationResponse();
+  if (!row.isActive) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  return null;
+}
+
+function blockedConversationResponse() {
+  return NextResponse.json(
+    { error: "This conversation is not available.", code: "blocked" as const },
+    { status: 403 }
+  );
 }
 
 function mapRow(row: { id: string; senderId: string; message: string | null; createdAt: Date }, viewerId: string): ChatMessage {
@@ -33,16 +42,16 @@ export async function GET(_req: Request, context: { params: Promise<{ matchId: s
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const blocked = await requireMatchingEligibility(session.uid);
-  if (blocked) return blocked;
+  const eligibility = await requireMatchingEligibility(session.uid);
+  if (eligibility) return eligibility;
 
   const { matchId } = await context.params;
   if (!isDbMatchId(matchId)) {
     return NextResponse.json({ error: "Invalid match." }, { status: 400 });
   }
 
-  const ok = await assertMatchMember(matchId, session.uid);
-  if (!ok) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const deny = await assertMessagesGate(matchId, session.uid);
+  if (deny) return deny;
 
   const conv = await prisma.conversation.findUnique({
     where: { matchId },
@@ -67,16 +76,16 @@ export async function POST(req: Request, context: { params: Promise<{ matchId: s
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const blocked = await requireMatchingEligibility(session.uid);
-  if (blocked) return blocked;
+  const eligibility = await requireMatchingEligibility(session.uid);
+  if (eligibility) return eligibility;
 
   const { matchId } = await context.params;
   if (!isDbMatchId(matchId)) {
     return NextResponse.json({ error: "Invalid match." }, { status: 400 });
   }
 
-  const ok = await assertMatchMember(matchId, session.uid);
-  if (!ok) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const deny = await assertMessagesGate(matchId, session.uid);
+  if (deny) return deny;
 
   let body: { text?: string };
   try {

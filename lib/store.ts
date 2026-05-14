@@ -25,6 +25,10 @@ type State = {
   bumpDailyLikeIfExplorer: () => void;
   mergeMatchesFromApi: (incoming: Match[]) => void;
   hydrateChatFromServer: (matchId: string, serverMsgs: ChatMessage[]) => void;
+  /** Drop a match and its chat thread from persisted client state (e.g. block, server 404). */
+  removeMatchByMatchId: (matchId: string) => void;
+  /** Remove any matches with this counterparty profile id (e.g. block from Discover). */
+  removeMatchByProfileId: (profileUserId: string) => void;
   /** Clear persisted client state after logout (matches, chats, me, etc.). */
   resetForLogout: () => void;
 };
@@ -112,7 +116,17 @@ export const useStore = create<State>()(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text })
           });
-          if (!res.ok) return false;
+          if (!res.ok) {
+            if (res.status === 403) {
+              try {
+                const j = (await res.json()) as { code?: string };
+                if (j.code === "blocked") get().removeMatchByMatchId(matchId);
+              } catch {
+                /* ignore */
+              }
+            }
+            return false;
+          }
           const data = (await res.json()) as { message?: ChatMessage };
           if (!data.message) return false;
           const curr = get().chats[matchId] ?? [];
@@ -263,6 +277,32 @@ export const useStore = create<State>()(
           (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
         );
         set({ chats: { ...get().chats, [matchId]: next } });
+      },
+
+      removeMatchByMatchId: (matchId) => {
+        const { matches, chats } = get();
+        if (!matches.some((m) => m.id === matchId)) return;
+        const { [matchId]: _removed, ...restChats } = chats;
+        set({
+          matches: matches.filter((m) => m.id !== matchId),
+          chats: restChats
+        });
+      },
+
+      removeMatchByProfileId: (profileUserId) => {
+        const { matches, chats } = get();
+        const removeIds = new Set(
+          matches.filter((m) => m.profileId === profileUserId).map((m) => m.id)
+        );
+        if (removeIds.size === 0) return;
+        const nextChats = { ...chats };
+        for (const id of removeIds) {
+          delete nextChats[id];
+        }
+        set({
+          matches: matches.filter((m) => !removeIds.has(m.id)),
+          chats: nextChats
+        });
       },
 
       resetForLogout: () =>

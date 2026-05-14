@@ -124,6 +124,7 @@ export function passesPreferenceFilters(
     maxWeightLb: number | null;
     preferredEthnicities: string[];
     preferredRelationshipTypes: string[];
+    preferredVibes?: string[];
     verifiedOnly: boolean;
   },
   u: DbUserForDiscover,
@@ -143,6 +144,12 @@ export function passesPreferenceFilters(
     !pref.preferredRelationshipTypes.includes(p.intent)
   ) {
     return false;
+  }
+  const wantVibes = pref.preferredVibes ?? [];
+  if (wantVibes.length > 0) {
+    const cand = new Set(p.vibes);
+    const overlap = wantVibes.some((v) => cand.has(v as Vibe));
+    if (!overlap) return false;
   }
   return true;
 }

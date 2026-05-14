@@ -45,6 +45,7 @@ type ProfileDto = {
   intent: string;
   interests: string[];
   photoUrls: string[];
+  hasDeviceLocation?: boolean;
   filters: {
     ageRange: [number, number];
     maxDistanceKm: number;
@@ -88,6 +89,9 @@ export default function ProfilePage() {
   const [preferredVibes, setPreferredVibes] = useState<string[]>(me.filters.vibes ?? []);
   const [verifiedOnly, setVerifiedOnly] = useState(me.filters.verifiedOnly);
   const [dealbreakers, setDealbreakers] = useState<string[]>(me.dealbreakers ?? []);
+  const [hasDeviceLocation, setHasDeviceLocation] = useState(false);
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [locationMsg, setLocationMsg] = useState<string | null>(null);
 
   const photoUrls = useMemo(
     () => me.media.filter((m) => m.kind === "photo").map((m) => toProxyPhotoUrl(m.url)),
@@ -118,6 +122,7 @@ export default function ProfilePage() {
       dealbreakers: data.dealbreakers,
       onboarded: true
     });
+    setHasDeviceLocation(data.hasDeviceLocation === true);
     setName(data.name);
     setCity(data.city);
     setBio(data.bio);
@@ -135,6 +140,7 @@ export default function ProfilePage() {
     setPreferredVibes(data.filters.vibes ?? []);
     setVerifiedOnly(data.filters.verifiedOnly);
     setDealbreakers(data.dealbreakers ?? []);
+    setHasDeviceLocation(data.hasDeviceLocation === true);
     setPreviewIndex(0);
   }
 
@@ -215,6 +221,61 @@ export default function ProfilePage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveCoordinates(coords: { latitude: number; longitude: number } | null) {
+    setLocationMsg(null);
+    setLocationSaving(true);
+    try {
+      const res = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coordinates: coords })
+      });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!res.ok) {
+        const j = (await res.json()) as { error?: string };
+        setLocationMsg(j.error ?? "Could not update location.");
+        return;
+      }
+      const data = (await res.json()) as ProfileDto;
+      applyFromServer(data);
+      setLocationMsg(coords === null ? "Saved location cleared." : "Saved your approximate position for Discover.");
+      setTimeout(() => setLocationMsg(null), 2500);
+    } catch {
+      setLocationMsg("Network error.");
+    } finally {
+      setLocationSaving(false);
+    }
+  }
+
+  function requestDeviceLocation() {
+    setLocationMsg(null);
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setLocationMsg("Location is not available in this browser.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setLocationMsg("Use HTTPS (or localhost) to enable location.");
+      return;
+    }
+    setLocationSaving(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        void saveCoordinates({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
+        });
+      },
+      () => {
+        setLocationSaving(false);
+        setLocationMsg("Permission denied or unavailable. You can still use city-based distance.");
+      },
+      { enableHighAccuracy: false, maximumAge: 60_000, timeout: 12_000 }
+    );
   }
 
   function setPhotos(nextUrls: string[]) {
@@ -408,6 +469,41 @@ export default function ProfilePage() {
             className="w-full rounded-2xl border border-line bg-white/80 px-4 py-3.5 text-base outline-none ring-accent2/30 focus:ring-2"
           />
         </label>
+
+        <div className="rounded-2xl border border-line/80 bg-surface2/40 p-4">
+          <p className="text-sm font-medium text-ink">Discover distance</p>
+          <p className="mt-1 text-xs text-sub">
+            Optional: save a rough GPS fix so we can rank people by real distance. Only your coordinates are stored;
+            we never show exact coordinates to others.
+          </p>
+          <p className="mt-2 text-xs text-sub">
+            Status:{" "}
+            <span className="font-semibold text-ink">
+              {hasDeviceLocation ? "Precise location on file" : "City / estimate only"}
+            </span>
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={locationSaving}
+              onClick={() => requestDeviceLocation()}
+              className="rounded-full border border-accent2/50 bg-accent2/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-accent2/20 disabled:opacity-50"
+            >
+              {locationSaving ? "Working…" : "Use device location"}
+            </button>
+            {hasDeviceLocation && (
+              <button
+                type="button"
+                disabled={locationSaving}
+                onClick={() => void saveCoordinates(null)}
+                className="rounded-full border border-line px-4 py-2 text-sm text-sub hover:text-ink disabled:opacity-50"
+              >
+                Clear saved GPS
+              </button>
+            )}
+          </div>
+          {locationMsg && <p className="mt-2 text-xs text-sub">{locationMsg}</p>}
+        </div>
 
         <label className="block">
           <span className="mb-1.5 block text-sm text-sub">Intent</span>

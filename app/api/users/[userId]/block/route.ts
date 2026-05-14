@@ -35,6 +35,17 @@ export async function POST(_req: Request, context: { params: Promise<{ userId: s
     }
   }
 
+  await prisma.match.updateMany({
+    where: {
+      isActive: true,
+      OR: [
+        { user1Id: session.uid, user2Id: userId },
+        { user1Id: userId, user2Id: session.uid }
+      ]
+    },
+    data: { isActive: false }
+  });
+
   return NextResponse.json({ ok: true });
 }
 

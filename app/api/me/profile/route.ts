@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/serverAuth";
 import { toProxyPhotoUrl } from "@/lib/media";
@@ -131,7 +132,12 @@ export async function GET() {
       preferredRaces: pref.preferredEthnicities ?? [],
       verifiedOnly: pref.verifiedOnly
     },
-    dealbreakers: pref.dealbreakers ?? []
+    dealbreakers: pref.dealbreakers ?? [],
+    hasDeviceLocation:
+      p.latitude != null &&
+      p.longitude != null &&
+      Number.isFinite(Number(p.latitude)) &&
+      Number.isFinite(Number(p.longitude))
   });
 }
 
@@ -159,6 +165,8 @@ type PatchBody = {
     verifiedOnly?: boolean;
   };
   dealbreakers?: string[];
+  /** Set precise coordinates for distance matching; `null` clears them. */
+  coordinates?: { latitude: number; longitude: number } | null;
 };
 
 export async function PATCH(req: Request) {
@@ -210,6 +218,33 @@ export async function PATCH(req: Request) {
 
   const markOnboardingDone = body.completeOnboarding === true;
 
+  let coordinatesPatch:
+    | { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null }
+    | undefined;
+  if (body.coordinates === null) {
+    coordinatesPatch = { latitude: null, longitude: null };
+  } else if (
+    body.coordinates &&
+    typeof body.coordinates.latitude === "number" &&
+    typeof body.coordinates.longitude === "number"
+  ) {
+    const la = body.coordinates.latitude;
+    const lo = body.coordinates.longitude;
+    if (
+      Number.isFinite(la) &&
+      Number.isFinite(lo) &&
+      la >= -90 &&
+      la <= 90 &&
+      lo >= -180 &&
+      lo <= 180
+    ) {
+      coordinatesPatch = {
+        latitude: new Prisma.Decimal(la.toFixed(7)),
+        longitude: new Prisma.Decimal(lo.toFixed(7))
+      };
+    }
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       if (gender !== undefined || interestedIn !== undefined || markOnboardingDone) {
@@ -229,7 +264,8 @@ export async function PATCH(req: Request) {
           displayName,
           city: body.city !== undefined ? body.city.trim().slice(0, 120) || null : undefined,
           bio: body.bio !== undefined ? body.bio.trim().slice(0, 2000) || null : undefined,
-          relationshipIntent: intent
+          relationshipIntent: intent,
+          ...(coordinatesPatch !== undefined ? coordinatesPatch : {})
         }
       });
 
@@ -320,6 +356,11 @@ export async function PATCH(req: Request) {
       preferredRaces: pref.preferredEthnicities ?? [],
       verifiedOnly: pref.verifiedOnly
     },
-    dealbreakers: pref.dealbreakers ?? []
+    dealbreakers: pref.dealbreakers ?? [],
+    hasDeviceLocation:
+      p.latitude != null &&
+      p.longitude != null &&
+      Number.isFinite(Number(p.latitude)) &&
+      Number.isFinite(Number(p.longitude))
   });
 }
